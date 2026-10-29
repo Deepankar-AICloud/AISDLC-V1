@@ -1,0 +1,16 @@
+  Determining projects to restore...
+C:\Users\dborgohain\Downloads\Workshop\Rukmini-customers\AISDLC-V1\src\backend\SmartServe.Api\SmartServe.Api.csproj : warning NU1902: Package 'Microsoft.Identity.Web' 3.2.0 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-rpq8-q44m-2rpg [C:\Users\dborgohain\Downloads\Workshop\Rukmini-customers\AISDLC-V1\src\backend\SmartServe.sln]
+  Restored C:\Users\dborgohain\Downloads\Workshop\Rukmini-customers\AISDLC-V1\src\backend\SmartServe.Api\SmartServe.Api.csproj (in 6.16 sec).
+  Restored C:\Users\dborgohain\Downloads\Workshop\Rukmini-customers\AISDLC-V1\src\backend\SmartServe.Tests\SmartServe.Tests.csproj (in 6.16 sec).
+C:\Users\dborgohain\Downloads\Workshop\Rukmini-customers\AISDLC-V1\src\backend\SmartServe.Api\SmartServe.Api.csproj : warning NU1902: Package 'Microsoft.Identity.Web' 3.2.0 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-rpq8-q44m-2rpg
+  SmartServe.Api -> C:\Users\dborgohain\Downloads\Workshop\Rukmini-customers\AISDLC-V1\src\backend\SmartServe.Api\bin\Release\net8.0\SmartServe.Api.dll
+  SmartServe.Tests -> C:\Users\dborgohain\Downloads\Workshop\Rukmini-customers\AISDLC-V1\src\backend\SmartServe.Tests\bin\Release\net8.0\SmartServe.Tests.dll
+
+Build succeeded.
+
+C:\Users\dborgohain\Downloads\Workshop\Rukmini-customers\AISDLC-V1\src\backend\SmartServe.Api\SmartServe.Api.csproj : warning NU1902: Package 'Microsoft.Identity.Web' 3.2.0 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-rpq8-q44m-2rpg [C:\Users\dborgohain\Downloads\Workshop\Rukmini-customers\AISDLC-V1\src\backend\SmartServe.sln]
+C:\Users\dborgohain\Downloads\Workshop\Rukmini-customers\AISDLC-V1\src\backend\SmartServe.Api\SmartServe.Api.csproj : warning NU1902: Package 'Microsoft.Identity.Web' 3.2.0 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-rpq8-q44m-2rpg
+    2 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:09.32

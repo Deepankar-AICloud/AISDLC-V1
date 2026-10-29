@@ -1,0 +1,43 @@
+# ---------------------------------------------------------------------------
+# Environment-specific configuration (DEV / STAGING / PRODUCTION)
+# Consumed by deploy workflows and Bicep parameter selection.
+# No secrets here — only non-sensitive names/flags. Secrets live in Key Vault
+# and GitHub Environments.
+# ---------------------------------------------------------------------------
+version: 1
+
+environments:
+  dev:
+    azure_environment: dev
+    bicep_parameters: infra/dev.parameters.json
+    requires_human_approval: false      # auto after approved merge
+    gates: [smoke, functional, integration]
+    front_door_enabled: false
+    github_environment: dev
+
+  staging:
+    azure_environment: staging
+    bicep_parameters: infra/staging.parameters.json
+    requires_human_approval: false
+    gates: [smoke, functional, integration, performance, dast]
+    use_deployment_slot: true
+    slot_name: staging
+    front_door_enabled: false
+    github_environment: staging
+
+  production:
+    azure_environment: production
+    bicep_parameters: infra/production.parameters.json
+    requires_human_approval: true       # MANDATORY (GitHub Environment protection)
+    gates: [release_qc, smoke, health]
+    use_deployment_slot: true
+    slot_name: staging                  # deploy to slot, then swap
+    swap_to_production: true
+    front_door_enabled: true
+    github_environment: production
+
+# Azure authentication model (no long-lived secrets).
+auth:
+  method: oidc                          # GitHub OIDC -> Azure federated credential
+  use_managed_identity: true
+  secrets_store: azure-key-vault

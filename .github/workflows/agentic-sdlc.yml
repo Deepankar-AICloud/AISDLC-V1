@@ -1,0 +1,209 @@
+name: Agentic SDLC Orchestrator
+
+# Central orchestrator entrypoint. Agents never call each other directly — this
+# workflow drives one stage per invocation, persists state, runs QC, and defers
+# human approvals to the artifact-review / feedback-handler workflows.
+
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to drive"
+        required: true
+        type: string
+
+# One concurrent run per issue; do not cancel in-flight state transitions.
+concurrency:
+  group: agentic-sdlc-${{ github.event.issue.number || inputs.issue_number }}
+  cancel-in-progress: false
+
+# Least privilege.
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  orchestrate:
+    # Only start when the control label is applied, or via manual dispatch.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.label.name == 'sdlc:start')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install orchestrator dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Install Copilot CLI (LLM runner)
+        run: |
+          curl -fsSL https://gh.io/copilot-install | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Resolve issue number
+        id: meta
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE="${{ github.event.issue.number || inputs.issue_number }}"
+          echo "issue=$ISSUE" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch requirement context
+        id: ctx
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE="${{ steps.meta.outputs.issue }}"
+          gh issue view "$ISSUE" --json title,body,comments \
+            --jq '"ISSUE #\(.number // '"$ISSUE"')\nTITLE: \(.title)\n\nBODY:\n\(.body)\n\nCOMMENTS:\n" + ([.comments[].body] | join("\n---\n"))' \
+            > /tmp/context.txt || echo "No issue context available." > /tmp/context.txt
+          echo "Context captured ($(wc -l < /tmp/context.txt) lines)."
+
+      - name: Run orchestrator (advance one stage)
+        id: run
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
+        run: |
+          python -m scripts.sdlc.run \
+            --issue "${{ steps.meta.outputs.issue }}" \
+            --context-file /tmp/context.txt \
+            --stage next | tee /tmp/outcome.json
+
+      - name: Parse outcome
+        id: outcome
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          d = json.load(open("/tmp/outcome.json"))
+          for k in ("status","agent","stage","artifact","human_review","qc_status","qc_score","run_id","recommended_model","selection_mode","readiness_status"):
+              print(f"{k}={d.get(k)}")
+          PY
+
+      - name: Readiness gate (await required information)
+        if: steps.outcome.outputs.status == 'AWAITING_REQUIRED_INFORMATION'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE="${{ steps.meta.outputs.issue }}"
+          QS=$(python -c "import json;d=json.load(open('/tmp/outcome.json'));r=d.get('readiness') or {};print(chr(10).join('- '+q for q in r.get('questions',[])) or '- (see readiness report)')")
+          gh issue comment "$ISSUE" --body "$(cat <<EOF
+          ## ⛔ Generation blocked — required information missing (${{ steps.outcome.outputs.stage }})
+
+          Status: **${{ steps.outcome.outputs.readiness_status }}**
+
+          Please provide the following so generation can proceed (the agent will
+          **not** invent these):
+
+          $QS
+
+          Add the details to this issue and re-run, or dispatch \`agentic-sdlc.yml\`.
+          EOF
+          )"
+          echo "Paused for required information — fail-safe, not generating."
+
+      - name: Model recommendation gate (await human confirmation)
+        if: steps.outcome.outputs.status == 'AWAITING_MODEL_CONFIRMATION'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE="${{ steps.meta.outputs.issue }}"
+          REC=$(python -c "import json;d=json.load(open('/tmp/outcome.json'));print(json.dumps(d.get('recommendation') or {}, indent=2))")
+          gh issue comment "$ISSUE" --body "$(cat <<EOF
+          ## 🤖 AI Model Recommendation — ${{ steps.outcome.outputs.stage }}
+
+          **Recommended model:** \`${{ steps.outcome.outputs.recommended_model }}\`
+          **Selection mode:** ${{ steps.outcome.outputs.selection_mode }}
+
+          Details (reason, alternatives, estimates — ESTIMATE/N·A where unknown):
+          \`\`\`json
+          $REC
+          \`\`\`
+
+          **Choose one** (model confirmation is separate from artifact approval):
+          - \`/model approve\` — use the recommended model
+          - \`/model select <model> [reason]\` — pick a different configured model
+          - \`/model compare\` — show the pending recommendation again
+
+          Generation will start once a model is confirmed.
+          EOF
+          )"
+          echo "Paused for model confirmation — not generating yet."
+
+      - name: Open or update artifact PR (human gate)
+        if: steps.outcome.outputs.status == 'GENERATED' && steps.outcome.outputs.human_review != 'none'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE="${{ steps.meta.outputs.issue }}"
+          AGENT="${{ steps.outcome.outputs.agent }}"
+          ARTIFACT="${{ steps.outcome.outputs.artifact }}"
+          BRANCH="sdlc/issue-${ISSUE}/${AGENT}"
+
+          # Build the AI Generation Summary from the outcome JSON.
+          python - "$ISSUE" > /tmp/pr_body.md <<'PY'
+          import json, sys
+          d = json.load(open("/tmp/outcome.json"))
+          issue = sys.argv[1]
+          rd = d.get("readiness") or {}
+          md = d.get("model_decision") or {}
+          diag = d.get("diagnosis") or {}
+          print(f"## AI Generation Summary\n")
+          print(f"- **Run ID:** `{d.get('run_id')}`")
+          print(f"- **Agent / Artifact:** {d.get('agent')} — {d.get('stage')}")
+          print(f"- **Source:** issue #{issue}")
+          print(f"- **Readiness:** {d.get('readiness_status') or 'N/A'}")
+          assumptions = rd.get('assumptions') or []
+          print(f"- **Assumptions:** {', '.join(assumptions) if assumptions else 'none'}")
+          print(f"- **Recommended model:** {d.get('recommended_model') or 'N/A'}")
+          print(f"- **Selected model:** {d.get('selected_model') or 'N/A'} "
+                f"({d.get('selection_source') or 'n/a'}, mode {d.get('selection_mode')})")
+          print(f"- **QC:** {d.get('qc_status')} {d.get('qc_score')} "
+                f"(threshold per `config/quality-gates.yml`)")
+          if diag:
+              print(f"- **QC diagnosis:** {diag.get('cause')} → {diag.get('action')}")
+          print(f"- **Retries:** {d.get('retries_used')}")
+          print(f"- **Tokens / Cost:** N/A (provider does not report usage via Copilot CLI)")
+          print(f"\nReview and **approve** to advance, or comment "
+                f"`/agent revise <notes>` to request a targeted change.")
+          PY
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Reuse the SAME branch/PR per stage (iterate in place).
+          git checkout -B "$BRANCH"
+          git add docs reports .sdlc "$ARTIFACT" 2>/dev/null || true
+          git commit -m "chore(sdlc): ${AGENT} artifact for issue #${ISSUE} [skip ci]" || echo "nothing to commit"
+          git push -u origin "$BRANCH" --force-with-lease
+
+          # Open PR if none exists for this branch; else update its body.
+          if gh pr view "$BRANCH" >/dev/null 2>&1; then
+            gh pr edit "$BRANCH" --body-file /tmp/pr_body.md || true
+          else
+            gh pr create \
+              --base main --head "$BRANCH" \
+              --title "[SDLC] ${AGENT} artifact — issue #${ISSUE}" \
+              --body-file /tmp/pr_body.md \
+              --label "sdlc:review"
+          fi
+
+      - name: Fail-safe on needs-human / blocked
+        if: steps.outcome.outputs.status == 'NEEDS_HUMAN' || steps.outcome.outputs.status == 'BLOCKED'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "${{ steps.meta.outputs.issue }}" \
+            --body "⚠️ Agentic SDLC paused at **${{ steps.outcome.outputs.stage }}** (status: ${{ steps.outcome.outputs.status }}, QC: ${{ steps.outcome.outputs.qc_status }}). Human intervention required. See run \`${{ steps.outcome.outputs.run_id }}\` reports."
+          echo "Workflow paused — fail-safe. Not advancing."

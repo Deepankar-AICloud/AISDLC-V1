@@ -1,0 +1,21 @@
+# ---------------------------------------------------------------------------
+# Model-routing optimization strategy (externalized weights).
+# The Model Router combines these signals when recommending a model. Weights
+# are relative; change them WITHOUT modifying orchestration code.
+# Objective: best expected quality + required capability + reasonable token/cost.
+# ---------------------------------------------------------------------------
+version: 1
+
+weights:
+  quality_weight: 0.35          # expected / historical QC quality
+  capability_weight: 0.25       # task-capability fit (reasoning/coding/context)
+  cost_weight: 0.20             # expected token cost efficiency
+  token_efficiency_weight: 0.10 # output-size / verbosity efficiency
+  reliability_weight: 0.07      # historical retry rate / stability
+  latency_weight: 0.03          # response latency
+
+# How much historical performance (when available) may shift a recommendation.
+history:
+  enabled: true
+  min_runs_for_signal: 3        # below this, history is shown as "Not enough data"
+  max_influence: 0.20           # cap on how far history can move the score

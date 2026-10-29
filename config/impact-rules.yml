@@ -1,0 +1,38 @@
+# ---------------------------------------------------------------------------
+# Change Impact Analysis rules (Priority 4).
+# When a customer/human change arrives, map it to the impacted artifacts and
+# sections so ONLY impacted content is regenerated. Matching is case-insensitive
+# substring on the change text. Artifacts not impacted default to NO_CHANGE.
+# ---------------------------------------------------------------------------
+version: 1
+
+all_artifacts: [brd, prd, epic, architecture, nfr, task, code]
+
+rules:
+  - match: [auth, authentication, entra, login, sso, oauth, mfa, identity]
+    impacts: { brd: UPDATE, prd: UPDATE, architecture: UPDATE, nfr: UPDATE, epic: UPDATE, code: UPDATE }
+    sections: [Security, Authentication, Functional Requirements]
+
+  - match: ["concurrent users", scale, throughput, latency, performance, load, "response time"]
+    impacts: { nfr: UPDATE, architecture: UPDATE }
+    sections: [Performance, Scalability]
+
+  - match: [gdpr, compliance, privacy, retention, "data residency", audit]
+    impacts: { brd: UPDATE, nfr: UPDATE, architecture: UPDATE }
+    sections: [Compliance, Security]
+
+  - match: [kubernetes, aks, container, serverless, "app service", hosting, "deployment model"]
+    impacts: { architecture: UPDATE, nfr: UPDATE }
+    sections: [Deployment]
+
+  - match: ["event-driven", "event driven", queue, messaging, async, "service bus"]
+    impacts: { architecture: UPDATE }
+    sections: [Architecture, Data Flow]
+
+  - match: [api, endpoint, contract, schema, payload]
+    impacts: { prd: UPDATE, architecture: UPDATE, code: UPDATE }
+    sections: [Interfaces, API]
+
+defaults:
+  # When nothing matches, a generic change touches the BRD at minimum.
+  unknown_change_impacts: { brd: UPDATE }

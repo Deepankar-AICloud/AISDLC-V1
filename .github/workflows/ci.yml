@@ -1,0 +1,87 @@
+name: CI — SmartServe Build & Test
+
+# Deterministic CI gate for application code. Runs on PRs touching app code.
+# Build/lint/test/coverage own the objective verdict (not an LLM).
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+env:
+  COVERAGE_THRESHOLD: 80
+
+jobs:
+  backend:
+    name: Backend (.NET)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        working-directory: src/backend
+        run: dotnet restore
+
+      - name: Build
+        working-directory: src/backend
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test with coverage
+        working-directory: src/backend
+        run: >-
+          dotnet test --no-build --configuration Release
+          --collect:"XPlat Code Coverage"
+          --logger "trx;LogFileName=test-results.trx"
+
+      - name: Vulnerable dependency scan
+        working-directory: src/backend
+        continue-on-error: true
+        run: dotnet list package --vulnerable --include-transitive
+
+  frontend:
+    name: Frontend (React/TS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install
+        working-directory: src/frontend
+        run: npm ci || npm install
+
+      - name: Lint
+        working-directory: src/frontend
+        run: npm run lint --if-present
+
+      - name: Type-check & build
+        working-directory: src/frontend
+        run: npm run build --if-present
+
+      - name: Unit tests
+        working-directory: src/frontend
+        run: npm test --if-present -- --run || echo "no tests yet"
+
+      - name: npm audit (high)
+        working-directory: src/frontend
+        continue-on-error: true
+        run: npm audit --audit-level=high

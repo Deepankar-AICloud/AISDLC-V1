@@ -1,0 +1,16 @@
+# Artifact Contract — Architecture (HLD/LLD).
+artifact: Architecture
+required_inputs: [approved_prd]
+required_outputs:
+  - Component Diagram
+  - Deployment Diagram
+  - Data Flow
+  - Security
+  - API
+validation_rules:
+  unique_ids_required: false
+  id_prefixes: ["ARCH-COMP-"]
+  requires_mermaid: true
+traceability:
+  required: true
+  references: ["PRD-FR-"]

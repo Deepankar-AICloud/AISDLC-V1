@@ -1,0 +1,14 @@
+# Artifact Contract — NFR.
+artifact: NFR
+required_inputs: [approved_architecture]
+required_outputs:
+  - Non-Functional Requirements
+  - Category
+  - Target
+  - Verification
+validation_rules:
+  unique_ids_required: true
+  id_prefixes: ["NFR-"]
+traceability:
+  required: true
+  references: ["ARCH-COMP-"]

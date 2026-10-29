@@ -1,0 +1,138 @@
+name: Ticket Tracker Application Setup
+description: Setup steps for the Ticket Tracker application development environment
+
+steps:
+  - name: Install Python dependencies
+    description: Install required Python packages for the Flask backend
+    commands:
+      - cd src
+      - pip install -r requirements.txt
+    verify:
+      - python -c "import flask; print(f'Flask version: {flask.__version__}')"
+
+  - name: Verify Docker is available
+    description: Check if Docker is installed for container testing
+    commands:
+      - docker --version
+    verify:
+      - docker --version
+
+  - name: Check project structure
+    description: Verify all required files are present
+    commands:
+      - test -f src/app.py
+      - test -f src/requirements.txt
+      - test -f src/index.html
+      - test -f src/board.html
+      - test -f Dockerfile
+      - test -f README.md
+
+  - name: Initialize data file if needed
+    description: Ensure tickets_data.json exists with empty array
+    commands:
+      - cd src
+      - test -f tickets_data.json || echo '[]' > tickets_data.json
+
+environment:
+  - name: Python
+    version: "3.11"
+    description: Python runtime for Flask application
+    
+  - name: Flask
+    version: "3.0.0"
+    description: Web framework for REST API
+    
+  - name: Docker
+    description: Container runtime for building and testing
+    optional: false
+    
+  - name: Azure CLI
+    description: For Azure Container Apps deployment
+    optional: true
+    install: |
+      curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+development_workflow:
+  - step: "Install dependencies: cd src && pip install -r requirements.txt"
+  - step: "Run application locally: cd src && python app.py"
+  - step: "Test application: Open http://localhost:80 in browser"
+  - step: "Test API endpoints: Use curl or Postman to test /api/tickets endpoints"
+  - step: "Build Docker image: docker build -t ticket-tracker ."
+  - step: "Run Docker container: docker run -p 80:80 ticket-tracker"
+  - step: "Verify container health: curl http://localhost:80/"
+
+testing:
+  manual_tests:
+    - description: "Test ticket creation via UI"
+      steps:
+        - "Navigate to http://localhost:80/index.html"
+        - "Fill in title, description, and due date"
+        - "Submit form and verify ticket appears"
+    
+    - description: "Test Kanban board"
+      steps:
+        - "Navigate to http://localhost:80/board.html"
+        - "Verify tickets display correctly"
+        - "Drag and drop tickets between columns"
+        - "Verify status updates"
+    
+    - description: "Test API endpoints"
+      steps:
+        - "GET /api/tickets - should return array of tickets"
+        - "POST /api/tickets - create new ticket"
+        - "GET /api/tickets/:id - retrieve specific ticket"
+        - "PUT /api/tickets/:id - update ticket"
+        - "DELETE /api/tickets/:id - delete ticket"
+
+common_issues:
+  - issue: "Port 80 requires sudo/admin privileges"
+    solution: "Run with sudo: sudo python app.py, or change port in app.py"
+  
+  - issue: "Module 'flask' not found"
+    solution: "Install dependencies: pip install -r requirements.txt"
+  
+  - issue: "Cannot connect to Docker daemon"
+    solution: "Ensure Docker is running: sudo systemctl start docker"
+  
+  - issue: "tickets_data.json permission denied"
+    solution: "Check file permissions: chmod 644 src/tickets_data.json"
+
+tools:
+  recommended:
+    - name: "curl"
+      purpose: "Testing API endpoints"
+      install: "sudo apt-get install curl"
+    
+    - name: "jq"
+      purpose: "Pretty-print JSON responses"
+      install: "sudo apt-get install jq"
+    
+    - name: "Docker"
+      purpose: "Container building and testing"
+      install: "https://docs.docker.com/engine/install/"
+    
+    - name: "Azure CLI"
+      purpose: "Azure deployment and management"
+      install: "curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash"
+
+deployment:
+  local:
+    - "cd src && python app.py"
+    - "Access at http://localhost:80"
+  
+  docker:
+    - "docker build -t ticket-tracker ."
+    - "docker run -p 80:80 ticket-tracker"
+    - "Access at http://localhost:80"
+  
+  azure:
+    - "GitHub Actions automatically deploys on push to main branch"
+    - "Requires Azure credentials configured as GitHub Secrets"
+    - "See README.md for Azure setup instructions"
+
+notes:
+  - "The application uses port 80, which may require elevated privileges on some systems"
+  - "JSON file storage is suitable for demo purposes; production should use a database"
+  - "Flask runs in development mode by default (debug=False in production)"
+  - "Auto-healing workflow creates GitHub issues on deployment failures"
+  - "See .github/copilot-instructions.md for detailed coding standards and guidelines"

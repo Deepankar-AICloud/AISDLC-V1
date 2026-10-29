@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------
+# LLM pricing (USD per 1,000,000 tokens). Externalized & VERSIONED.
+# Costs derived from this file are ESTIMATES, not provider billing.
+# Telemetry labels each figure actual | estimated | unavailable.
+# Update pricing_version whenever any rate changes.
+# ---------------------------------------------------------------------------
+version: 1
+pricing_version: "2026-10-29"
+currency: USD
+unit: per_million_tokens
+
+models:
+  gpt-4o-mini:
+    input: 0.15
+    output: 0.60
+    cache_read: 0.075
+    cache_write: 0.15
+  gpt-4o:
+    input: 2.50
+    output: 10.00
+    cache_read: 1.25
+    cache_write: 2.50
+  claude-sonnet-4:
+    input: 3.00
+    output: 15.00
+    cache_read: 0.30
+    cache_write: 3.75
+
+# Fallback when a model is absent above. Marks cost as 'estimated'.
+unknown_model:
+  input: null
+  output: null
+  note: "Model not in pricing table — cost reported as unavailable."

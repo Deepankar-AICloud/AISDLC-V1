@@ -1,0 +1,21 @@
+# ---------------------------------------------------------------------------
+# Budget controls (Priority 7). Hard budgets are never silently exceeded.
+# null = unlimited. Enforcement only applies when a NUMERIC estimate exceeds a
+# NUMERIC budget; unknown/N·A estimates (e.g. Copilot CLI) cannot be evaluated
+# and are allowed through (tracked, not blocked).
+# ---------------------------------------------------------------------------
+version: 1
+enabled: true
+
+workflow:
+  max_total_tokens: null
+  max_total_cost_usd: null
+
+artifact:
+  max_tokens: null
+  max_cost_usd: null
+
+on_over_budget:
+  # No automatic cheaper-model selector is implemented yet; pause for a human.
+  try_cheaper_model: false
+  else: human_decision        # human_decision | block

@@ -1,0 +1,17 @@
+# Artifact Contract — PRD / FSD.
+artifact: PRD
+required_inputs: [approved_brd, source_reference]
+required_outputs:
+  - Overview
+  - Traceability Summary
+  - Functional Requirements
+  - Business Workflow
+  - Interfaces
+  - Validation
+  - Out of Scope
+validation_rules:
+  unique_ids_required: true
+  id_prefixes: ["PRD-FR-"]
+traceability:
+  required: true
+  references: ["BRD-REQ-"]

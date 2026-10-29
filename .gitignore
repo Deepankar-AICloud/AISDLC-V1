@@ -1,0 +1,31 @@
+# Agentic SDLC runtime artifacts (regenerated per run)
+.sdlc/
+reports/
+generated/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+
+# .NET
+bin/
+obj/
+*.user
+
+# Secrets / local env (never commit)
+*.env
+.env
+.env.*
+appsettings.Development.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db

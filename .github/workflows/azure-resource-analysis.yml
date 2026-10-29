@@ -1,0 +1,195 @@
+name: Azure Resource Analysis
+
+on:
+  workflow_dispatch:
+    inputs:
+      resource_group:
+        description: 'Azure Resource Group to analyze (optional - defaults to AZURE_RESOURCE_GROUP secret)'
+        required: false
+        type: string
+
+env:
+  RESOURCE_GROUP: ${{ inputs.resource_group || secrets.AZURE_RESOURCE_GROUP }}
+
+jobs:
+  analyze-azure-resources:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Configure Azure CLI
+        run: |
+          # Configure auto-accept for extension installs
+          az config set extension.use_dynamic_install=yes_without_prompt 2>/dev/null || true
+          az config set extension.dynamic_install_allow_preview=true 2>/dev/null || true
+          az config set core.output=json 2>/dev/null || true
+          
+          # Verify login and resource group
+          echo "Verifying Azure login..."
+          az account show --query "{name:name, id:id}" -o table
+          
+          echo "Verifying resource group: ${{ env.RESOURCE_GROUP }}"
+          az group show --name "${{ env.RESOURCE_GROUP }}" --query "{name:name, location:location}" -o table
+
+      - name: Install Copilot CLI
+        run: |
+          curl -fsSL https://gh.io/copilot-install | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Analyze Azure Resources with Copilot CLI
+        id: analyze
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        run: |
+          echo "Starting Azure Resource Analysis for: ${{ env.RESOURCE_GROUP }}"
+          
+          # Build the prompt for Copilot CLI to use the azure-resource-analyzer skill
+          cat > /tmp/analysis_prompt.txt << PROMPT_EOF
+          You have access to Azure CLI commands. Analyze the Azure resource group "${{ env.RESOURCE_GROUP }}" and provide a comprehensive infrastructure report.
+
+          Use the azure-resource-analyzer skill to analyze the resource group. Follow these steps:
+
+          1. First, verify the resource group exists:
+             az group show --name ${{ env.RESOURCE_GROUP }} --output json
+
+          2. List all resources in the resource group:
+             az resource list --resource-group ${{ env.RESOURCE_GROUP }} --output json
+
+          3. For each resource type found, gather detailed information using the appropriate az commands
+
+          4. Generate a comprehensive markdown report with:
+             - Executive Summary with health status table
+             - Resource Inventory organized by category
+             - Security Assessment (strengths and areas for improvement)
+             - Issues & Recommendations (Critical, Warnings, Optimizations)
+             - Cost Considerations
+             - Immediate Actions Required
+
+          Return ONLY the markdown report, well-structured and ready to be used in a GitHub issue.
+          Do NOT save to any file - just output the markdown content.
+          PROMPT_EOF
+          
+          echo "=== Analysis Prompt ==="
+          cat /tmp/analysis_prompt.txt
+          echo "======================="
+          
+          # Run Copilot CLI with the skill
+          echo "Running Copilot CLI analysis..."
+          if ANALYSIS_OUTPUT=$(copilot -p "$(cat /tmp/analysis_prompt.txt)" --allow-all-tools 2>&1); then
+            echo "Copilot analysis succeeded"
+            echo "$ANALYSIS_OUTPUT" > /tmp/analysis_report.md
+          else
+            echo "Copilot analysis failed with exit code: $?"
+            echo "Output was: $ANALYSIS_OUTPUT"
+            
+            # Fallback: Generate basic report using Azure CLI directly
+            echo "Falling back to basic Azure CLI analysis..."
+            
+            cat > /tmp/analysis_report.md << 'FALLBACK_EOF'
+          # Azure Resource Analysis Report
+
+          **Resource Group:** `${{ env.RESOURCE_GROUP }}`
+          **Report Generated:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          > ⚠️ **Note:** Copilot CLI analysis encountered an issue. Basic resource listing provided below.
+
+          ## Resource Inventory
+
+          FALLBACK_EOF
+            
+            echo '```json' >> /tmp/analysis_report.md
+            az resource list --resource-group "${{ env.RESOURCE_GROUP }}" --output json >> /tmp/analysis_report.md 2>&1 || echo "Failed to list resources" >> /tmp/analysis_report.md
+            echo '```' >> /tmp/analysis_report.md
+          fi
+          
+          echo "=== Analysis Report Preview ==="
+          head -100 /tmp/analysis_report.md
+          echo "==============================="
+
+      - name: Create GitHub Issue with Analysis Report
+        id: create-issue
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        run: |
+          # Read the analysis report
+          ANALYSIS_REPORT=$(cat /tmp/analysis_report.md)
+          
+          # Build the issue creation prompt for Copilot CLI
+          cat > /tmp/issue_prompt.txt << PROMPT_EOF
+          Create a GitHub issue in this repository for an Azure Resource Analysis Report.
+
+          Please create the issue with:
+          1. Title: "📊 Azure Resource Analysis: ${{ env.RESOURCE_GROUP }}"
+          2. Labels: infrastructure, azure, automated, analysis
+          3. The body should contain the analysis report below
+          PROMPT_EOF
+          
+          # Append context
+          echo "" >> /tmp/issue_prompt.txt
+          echo "=== CONTEXT ===" >> /tmp/issue_prompt.txt
+          echo "Repository: ${{ github.repository }}" >> /tmp/issue_prompt.txt
+          echo "Triggered by: ${{ github.actor }}" >> /tmp/issue_prompt.txt
+          echo "Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> /tmp/issue_prompt.txt
+          echo "" >> /tmp/issue_prompt.txt
+          echo "=== ANALYSIS REPORT ===" >> /tmp/issue_prompt.txt
+          cat /tmp/analysis_report.md >> /tmp/issue_prompt.txt
+          
+          # Try Copilot CLI first
+          echo "Asking Copilot CLI to create the GitHub issue..."
+          if copilot -p "$(cat /tmp/issue_prompt.txt)" --allow-all-tools; then
+            echo "Issue created via Copilot CLI"
+          else
+            echo "Copilot CLI failed, falling back to manual issue creation..."
+            
+            # Manual fallback
+            cat > /tmp/issue_body.md << 'ISSUE_HEADER'
+          ## 📊 Azure Infrastructure Analysis Report
+
+          **Workflow Run:** [View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          **Triggered by:** @${{ github.actor }}
+
+          ---
+
+          ISSUE_HEADER
+            
+            # Append the analysis report
+            cat /tmp/analysis_report.md >> /tmp/issue_body.md
+            
+            cat >> /tmp/issue_body.md << 'ISSUE_FOOTER'
+
+          ---
+
+          ## ✅ Review Checklist
+
+          - [ ] Review critical issues identified
+          - [ ] Address security recommendations
+          - [ ] Consider cost optimization suggestions
+          - [ ] Update infrastructure as needed
+          ISSUE_FOOTER
+
+            # Create the issue
+            ISSUE_URL=$(gh issue create \
+              --title "📊 Azure Resource Analysis: ${{ env.RESOURCE_GROUP }}" \
+              --body-file /tmp/issue_body.md \
+              --label "infrastructure,azure,automated,analysis" 2>&1) || true
+            
+            if [ -n "$ISSUE_URL" ]; then
+              echo "Issue created: $ISSUE_URL"
+              ISSUE_NUMBER=$(echo "$ISSUE_URL" | grep -oE '[0-9]+$')
+              echo "ISSUE_NUMBER=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+              echo "ISSUE_URL=$ISSUE_URL" >> $GITHUB_OUTPUT
+            else
+              echo "Failed to create issue"
+            fi
+          fi

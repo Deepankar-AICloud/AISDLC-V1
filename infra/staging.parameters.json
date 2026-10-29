@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": { "value": "staging" },
+    "appBaseName": { "value": "smartserve" },
+    "sqlAdminLogin": { "value": "smartserveadmin" },
+    "sqlAdminPassword": { "reference": { "keyVault": { "id": "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.KeyVault/vaults/<kv>" }, "secretName": "sql-admin-password" } },
+    "entraTenantId": { "value": "<tenant-id>" },
+    "entraClientId": { "value": "<api-client-id>" }
+  }
+}

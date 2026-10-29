@@ -1,0 +1,74 @@
+# ---------------------------------------------------------------------------
+# Quality Control thresholds & rubrics (configurable)
+# QC combines deterministic checks + semantic LLM evaluation. Scores are
+# 0-100. status = PASS when overall_score >= threshold.
+# ---------------------------------------------------------------------------
+version: 1
+
+defaults:
+  threshold: 90
+  max_auto_retries: 2
+
+gates:
+  brd:
+    threshold: 90
+    dimensions: [completeness, clarity, traceability, testability, consistency]
+    deterministic_checks:
+      - requires_sections: ["Executive Summary", "Business Requirements", "Scope", "Success Criteria"]
+      - requires_ids_prefixed: ["FR-", "NFR-"]
+      - no_fabricated_requirements: true
+
+  prd:
+    threshold: 90
+    dimensions: [completeness, clarity, traceability, testability, consistency]
+    deterministic_checks:
+      - requires_traceability_to: BRD
+      - no_orphan_functionality: true
+
+  epic:
+    threshold: 85
+    dimensions: [completeness, traceability, testability]
+    deterministic_checks:
+      - requires_ids_prefixed: ["EPIC-", "FEATURE-", "US-"]
+      - no_orphan_stories: true
+
+  architecture:
+    threshold: 90
+    dimensions: [completeness, consistency, security, maintainability, nfr_alignment]
+    deterministic_checks:
+      - requires_sections: ["Component Diagram", "Deployment Diagram", "Data Flow"]
+      - requires_mermaid: true
+
+  nfr:
+    threshold: 88
+    dimensions: [completeness, measurability, testability]
+
+  task:
+    threshold: 85
+    dimensions: [completeness, traceability, testability]
+    deterministic_checks:
+      - requires_ids_prefixed: ["TASK-"]
+
+  code:
+    threshold: 90
+    # Code QC is dominated by deterministic tools (build/lint/test/coverage).
+    dimensions: [maintainability, consistency]
+    deterministic_checks:
+      - build_must_pass: true
+      - lint_must_pass: true
+      - unit_tests_must_pass: true
+      - coverage_min: 80
+
+  testing:
+    threshold: 85
+    dimensions: [completeness, requirement_coverage]
+    deterministic_checks:
+      - functional_tests_must_pass: true
+
+  security:
+    threshold: 100            # security is policy-gated, not averaged away
+    blocking_severity: high   # critical/high block; medium/low warn
+    deterministic_checks:
+      - sast_no_blocking: true
+      - dependency_no_blocking: true
+      - secret_scan_clean: true

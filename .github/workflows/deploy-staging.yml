@@ -1,0 +1,66 @@
+name: Deploy — STAGING
+
+# Promotes to the STAGING deployment slot, runs test + DAST gates. Does NOT
+# promote to production.
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Deploy — DEV"]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish backend
+        working-directory: src/backend
+        run: dotnet publish -c Release -o ${{ github.workspace }}/publish
+
+      - name: Deploy to STAGING slot
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ secrets.AZURE_API_APP_STAGING }}
+          slot-name: staging
+          package: ${{ github.workspace }}/publish
+
+      - name: Smoke + integration tests
+        run: |
+          URL="${{ secrets.AZURE_API_URL_STAGING }}"
+          curl --fail --retry 5 --retry-delay 10 "$URL/health" || { echo "Staging smoke FAILED"; exit 1; }
+
+  dast:
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: OWASP ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ secrets.AZURE_WEB_URL_STAGING }}
+          fail_action: true

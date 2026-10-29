@@ -1,0 +1,50 @@
+# ---------------------------------------------------------------------------
+# Generation Readiness Gate configuration (Priority 1).
+# Before generating a major artifact the orchestrator checks that the required
+# inputs are available. Detection is deterministic (keyword presence in the
+# provided context + presence of approved upstream artifacts). Missing MANDATORY
+# info => BLOCKED (do not proceed). Missing OPTIONAL info => proceed but mark
+# ASSUMPTIONS. Never silently invents business requirements.
+# ---------------------------------------------------------------------------
+version: 1
+enabled: true
+
+defaults:
+  allow_assumptions: true
+  min_context_chars: 25        # trivially short requirements are blocked
+
+artifacts:
+  brd:
+    mandatory:
+      business_problem: [problem, issue, pain, need, request, require, cannot, unable, lack, want, missing]
+      business_objective: [objective, goal, outcome, so that, enable, provide, allow, improve, reduce, access, support, automate]
+      stakeholders: [employee, manager, user, stakeholder, customer, admin, reviewer, role, team, security, auditor]
+    optional:
+      scope: [scope, include, exclude, out of scope]
+      constraints: [constraint, limitation, must not, compliance, gdpr, regulation, policy]
+    upstream: []
+
+  prd:
+    mandatory: {}
+    optional: {}
+    upstream: [brd]
+
+  epic:
+    mandatory: {}
+    upstream: [prd]
+
+  architecture:
+    mandatory: {}
+    upstream: [prd]
+
+  nfr:
+    mandatory: {}
+    upstream: [architecture]
+
+  task:
+    mandatory: {}
+    upstream: [architecture, nfr]
+
+  code:
+    mandatory: {}
+    upstream: [task]

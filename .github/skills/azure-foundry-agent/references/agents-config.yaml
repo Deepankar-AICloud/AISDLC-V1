@@ -1,0 +1,48 @@
+# Azure Foundry Agents Configuration
+# 
+# Add your Azure AI Foundry agents here. Each agent should have:
+# - name: The exact agent name as configured in Azure Foundry
+# - description: A brief description of what the agent does
+# - triggers: Keywords that should route to this agent
+#
+# Format: YAML
+
+endpoint: "https://abpatra-7946-resource.services.ai.azure.com/api/projects/abpatra-7946"
+
+agents:
+  - name: "work-assitant"
+    description: "Work Assistant agent for project-related questions, documentation, and work items"
+    triggers:
+      - "work assistant"
+      - "project documents"
+      - "work items"
+      - "project help"
+
+  - name: "product-architect"
+    description: "Product architect for any architecture related queries needced for desinging something on azure"
+    triggers:
+      - "product architect"
+      - "architecture design"
+      - "product architecture help"
+
+  - name: "product-researcher"
+    description: "Product researcher for competitive market analysis on produc features etc"
+    triggers:
+      - "product researcher"
+      - "market research"
+
+  # Add more agents below as you create them in Azure Foundry
+  # Example:
+  # - name: "code-reviewer"
+  #   description: "Code review assistant for analyzing code quality"
+  #   triggers:
+  #     - "code review"
+  #     - "review my code"
+  #     - "code quality"
+  #
+  # - name: "documentation-helper"
+  #   description: "Documentation assistant for generating and improving docs"
+  #   triggers:
+  #     - "write documentation"
+  #     - "doc helper"
+  #     - "generate docs"

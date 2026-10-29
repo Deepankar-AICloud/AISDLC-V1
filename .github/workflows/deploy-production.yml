@@ -1,0 +1,143 @@
+name: Deploy — PRODUCTION
+
+# Mandatory human approval via the `production` GitHub Environment. Deploys to
+# the staging slot, then performs a controlled slot swap. No unsafe automatic
+# rollback — on health failure it stops and reports.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'promote' to confirm production promotion"
+        required: true
+        type: string
+      issue_number:
+        description: "Related GitHub issue number (optional; persists SDLC state)"
+        required: false
+        type: number
+      sdlc_run_id:
+        description: "Agentic SDLC run ID for its evidence (optional)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: inputs.confirm == 'promote'
+    runs-on: ubuntu-latest
+    environment: production      # <-- requires reviewers (mandatory human approval)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python for release evidence
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install release tooling
+        run: pip install -r scripts/requirements.txt
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate staging slot health (release gate)
+        run: |
+          URL="${{ secrets.AZURE_API_URL_STAGING }}"
+          curl --fail --retry 5 --retry-delay 10 "$URL/health" || { echo "Staging unhealthy — aborting promotion."; exit 1; }
+
+      - name: Swap staging slot into production
+        id: swap
+        continue-on-error: true
+        run: |
+          az webapp deployment slot swap \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" \
+            --name "${{ secrets.AZURE_API_APP_PROD }}" \
+            --slot staging --target-slot production
+
+      - name: Production health & smoke checks
+        id: verify
+        if: steps.swap.outcome == 'success'
+        run: |
+          URL="${{ secrets.AZURE_API_URL_PROD }}"
+          curl --fail --retry 6 --retry-delay 10 "$URL/health" || echo "unhealthy=true" >> "$GITHUB_OUTPUT"
+
+      - name: Persist production verification state
+        id: state
+        if: always()
+        env:
+          SWAP_RESULT: ${{ steps.swap.outcome }}
+          HEALTH_FAILURE: ${{ steps.verify.outputs.unhealthy }}
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          INPUT_RUN_ID: ${{ inputs.sdlc_run_id }}
+        run: |
+          RESULT="verified"
+          DETAILS="Production slot swap and health check passed."
+          if [ "$SWAP_RESULT" != "success" ]; then
+            RESULT="failed"
+            DETAILS="Production slot swap failed."
+          elif [ "$HEALTH_FAILURE" = "true" ]; then
+            RESULT="failed"
+            DETAILS="Production health/smoke check failed after slot swap."
+          fi
+          ISSUE_ARGS=()
+          if [ -n "$ISSUE_NUMBER" ]; then
+            ISSUE_ARGS+=(--issue "$ISSUE_NUMBER")
+          fi
+          RUN_ID="$INPUT_RUN_ID"
+          if [ -z "$RUN_ID" ]; then RUN_ID="prod-${{ github.run_id }}"; fi
+          python -m scripts.sdlc.deployment_status \
+            --result "$RESULT" \
+            --run-id "$RUN_ID" \
+            --commit-sha "${{ github.sha }}" \
+            --details "$DETAILS" \
+            "${ISSUE_ARGS[@]}" | tee /tmp/deployment-status.json
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Release Evidence Pack
+        if: always()
+        env:
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: |
+          HEALTH="healthy"
+          if [ "${{ steps.state.outputs.result }}" != "verified" ]; then HEALTH="unhealthy_or_not_run"; fi
+          ISSUE_ARGS=()
+          if [ -n "$ISSUE_NUMBER" ]; then
+            ISSUE_ARGS+=(--issue "$ISSUE_NUMBER")
+          fi
+          python -m scripts.sdlc.release_evidence \
+            --run-id "${{ steps.state.outputs.run_id }}" \
+            --commit-sha "${{ github.sha }}" \
+            --deployment-result "${{ steps.swap.outcome }}" \
+            --health-result "$HEALTH" \
+            "${ISSUE_ARGS[@]}"
+
+      - name: Retain Release Evidence Pack
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence-${{ github.run_id }}
+          path: reports/${{ steps.state.outputs.run_id }}/release-evidence.*
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Mark DEPLOYED_AND_VERIFIED
+        if: steps.state.outputs.result == 'verified'
+        run: echo "::notice::Production deployment verified (health + smoke passed)."
+
+      - name: Fail-safe on verification failure (DEPLOYMENT_FAILED)
+        if: steps.state.outputs.result == 'failed'
+        run: |
+          echo "::error::State DEPLOYMENT_FAILED — production verification FAILED. Follow the documented recovery/rollback runbook (slot swap back)."
+          exit 1

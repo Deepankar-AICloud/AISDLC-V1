@@ -1,0 +1,4 @@
+PyYAML>=6.0
+# Optional LLM backends (used when available; pipeline degrades gracefully):
+# github-copilot-sdk
+# python-dotenv

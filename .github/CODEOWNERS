@@ -1,0 +1,20 @@
+# CODEOWNERS — enforce human review on critical paths (human-in-the-loop).
+# Replace the placeholder teams/handles with real owners before enabling
+# required reviews in branch protection.
+
+# Agentic SDLC control plane
+/.github/agents/            @smartserve/architects
+/.github/workflows/         @smartserve/platform
+/config/                    @smartserve/platform
+/scripts/                   @smartserve/platform
+
+# Application
+/src/backend/               @smartserve/backend
+/src/frontend/              @smartserve/frontend
+
+# Infrastructure & security-sensitive
+/infra/                     @smartserve/platform @smartserve/security
+/.github/workflows/deploy-production.yml @smartserve/security @smartserve/platform
+
+# Generated SDLC artifacts require human approval
+/docs/                      @smartserve/architects

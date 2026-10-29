@@ -1,0 +1,12 @@
+# Artifact Contract — Testing (functional test specification).
+artifact: Testing
+required_inputs: [approved_stories]
+required_outputs:
+  - Coverage matrix
+  - Test cases
+validation_rules:
+  unique_ids_required: true
+  id_prefixes: ["FT-"]
+traceability:
+  required: true
+  references: ["US-"]

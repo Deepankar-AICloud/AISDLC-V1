@@ -1,0 +1,21 @@
+# Artifact Contract — BRD (Priority 2). Validated by scripts/sdlc/contracts.
+artifact: BRD
+required_inputs: [customer_requirement, source_reference]
+required_outputs:
+  - Executive Summary
+  - Business Problem
+  - Business Objective
+  - Stakeholders
+  - Scope
+  - Out of Scope
+  - Functional Requirements
+  - Assumptions
+  - Dependencies
+  - Constraints
+  - Acceptance Criteria
+validation_rules:
+  unique_ids_required: true
+  id_prefixes: ["FR-"]
+traceability:
+  required: true
+  references: []          # BRD is the root; no upstream reference required

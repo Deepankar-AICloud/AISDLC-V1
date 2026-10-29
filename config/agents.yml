@@ -1,0 +1,129 @@
+# ---------------------------------------------------------------------------
+# Agentic SDLC — Agent registry & enablement
+# Configuration-driven: enable/disable agents and set human-review policy
+# WITHOUT changing orchestrator code.
+# ---------------------------------------------------------------------------
+version: 1
+
+defaults:
+  max_auto_retries: 2          # QC retries before NEEDS_HUMAN_INTERVENTION
+  human_review: required       # required | optional | none
+
+agents:
+  brd:
+    enabled: true
+    definition: .github/agents/brd.agent.md
+    produces: docs/brd
+    artifact_prefix: BRD
+    capability: { task_type: brd, complexity: medium, reasoning: high, coding: none }
+    quality_gate: brd
+    human_review: required
+    next: prd
+
+  prd:
+    enabled: true
+    definition: .github/agents/prd.agent.md
+    produces: docs/prd
+    artifact_prefix: PRD
+    capability: { task_type: prd, complexity: medium, reasoning: high, coding: none }
+    quality_gate: prd
+    human_review: required
+    next: epic
+
+  epic:
+    enabled: true
+    definition: .github/agents/epic-feature.agent.md
+    produces: docs/epic
+    artifact_prefix: EPIC
+    capability: { task_type: epic, complexity: medium, reasoning: medium, coding: none }
+    quality_gate: epic
+    human_review: optional
+    next: architecture
+
+  architecture:
+    enabled: true
+    definition: .github/agents/arch_document.agent.md
+    produces: docs/architecture
+    artifact_prefix: ARCH
+    capability: { task_type: architecture, complexity: high, reasoning: high, coding: low }
+    quality_gate: architecture
+    human_review: required
+    next: nfr
+
+  nfr:
+    enabled: true
+    definition: .github/agents/nfr.agent.md
+    produces: docs/nfr
+    artifact_prefix: NFR
+    capability: { task_type: nfr, complexity: medium, reasoning: high, coding: none }
+    quality_gate: nfr
+    human_review: optional
+    next: task
+
+  task:
+    enabled: true
+    definition: .github/agents/task.agent.md
+    produces: docs/tasks
+    artifact_prefix: TASK
+    capability: { task_type: task_planning, complexity: medium, reasoning: medium, coding: low }
+    quality_gate: task
+    human_review: none
+    next: code
+
+  code:
+    enabled: true
+    definition: .github/agents/engineer.agent.md
+    produces: src
+    artifact_prefix: CODE
+    capability: { task_type: code, complexity: high, reasoning: high, coding: high }
+    quality_gate: code
+    human_review: required          # PR + CODEOWNERS
+    next: code_review
+
+  code_review:
+    enabled: true
+    definition: .github/agents/code-review.agent.md
+    capability: { task_type: code_review, complexity: high, reasoning: high, coding: medium }
+    human_review: required
+    next: functional_test
+
+  functional_test:
+    enabled: true
+    definition: .github/agents/functional-test.agent.md
+    produces: tests/functional
+    capability: { task_type: testing, complexity: medium, reasoning: medium, coding: medium }
+    quality_gate: testing
+    human_review: none
+    next: security
+
+  sast:
+    enabled: true
+    definition: .github/agents/sast.agent.md
+    deterministic: true            # CodeQL / dep-scan / secret-scan own the verdict
+    quality_gate: security
+    human_review: none
+    next: dast
+
+  dast:
+    enabled: true
+    definition: .github/agents/dast.agent.md
+    deterministic: true            # OWASP ZAP owns the verdict
+    quality_gate: security
+    human_review: none
+    next: release
+
+  release:
+    enabled: true
+    definition: .github/agents/release.agent.md
+    capability: { task_type: release, complexity: medium, reasoning: medium, coding: low }
+    human_review: required          # mandatory production approval
+    next: completed
+
+# Cross-cutting control-plane components (not pipeline agents)
+components:
+  quality_control:
+    definition: .github/agents/quality-control.agent.md
+  test_automation:
+    definition: .github/agents/test-automation.agent.md
+  performance:
+    definition: .github/agents/performance.agent.md

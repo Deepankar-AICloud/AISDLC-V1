@@ -1,0 +1,12 @@
+# Artifact Contract — Code (implementation summary artifact).
+artifact: Code
+required_inputs: [approved_task]
+required_outputs:
+  - Implementation Summary
+  - Files
+validation_rules:
+  unique_ids_required: false
+  id_prefixes: []
+traceability:
+  required: true
+  references: ["TASK-"]

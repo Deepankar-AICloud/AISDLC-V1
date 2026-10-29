@@ -1,0 +1,68 @@
+name: Agentic SDLC — Artifact Review & Resume
+
+# When a human approves an SDLC artifact PR, advance the orchestrator to the
+# next stage. When they merge, mark the stage approved. This is the human gate
+# that resumes orchestration.
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: artifact-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  resume:
+    # Only on approval of an SDLC review PR.
+    if: >-
+      github.event.review.state == 'approved' &&
+      startsWith(github.event.pull_request.head.ref, 'sdlc/issue-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Derive issue number from branch
+        id: meta
+        run: |
+          BRANCH="${{ github.event.pull_request.head.ref }}"
+          ISSUE="$(echo "$BRANCH" | sed -E 's#sdlc/issue-([0-9]+)/.*#\1#')"
+          echo "issue=$ISSUE" >> "$GITHUB_OUTPUT"
+
+      - name: Mark stage approved & advance state
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          python -m scripts.sdlc.approve --issue "${{ steps.meta.outputs.issue }}" \
+            --reviewer "${{ github.event.review.user.login }}"
+
+      - name: Merge the approved artifact PR
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge "${{ github.event.pull_request.number }}" --squash --delete-branch || \
+            echo "Merge deferred (branch protection may require additional checks)."
+
+      - name: Trigger next stage
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run agentic-sdlc.yml -f issue_number="${{ steps.meta.outputs.issue }}" || \
+            echo "Could not auto-trigger next stage; dispatch manually."

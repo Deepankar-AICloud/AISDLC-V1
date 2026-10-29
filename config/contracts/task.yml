@@ -1,0 +1,13 @@
+# Artifact Contract — Development Tasks.
+artifact: Task
+required_inputs: [approved_architecture, approved_nfr]
+required_outputs:
+  - Traceability
+  - Tasks
+  - Definition of done
+validation_rules:
+  unique_ids_required: true
+  id_prefixes: ["TASK-"]
+traceability:
+  required: true
+  references: ["US-", "ARCH-COMP-"]

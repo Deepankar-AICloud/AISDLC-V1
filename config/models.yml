@@ -1,0 +1,98 @@
+# ---------------------------------------------------------------------------
+# Model Router configuration
+# Agents request a CAPABILITY (task_type/complexity/reasoning/coding); the
+# router resolves it to a concrete model. Model names are provider-driven and
+# configurable here — NEVER hardcoded inside agent or orchestrator code.
+# ---------------------------------------------------------------------------
+version: 1
+
+# Model selection mode (how the selected model is decided per generation):
+#   MANUAL      - a human must pick the model before generation
+#   RECOMMENDED - router recommends; human confirms/overrides where a gate
+#                 requires it (default for this project)
+#   AUTO        - router selects automatically, no confirmation
+# Overridable at runtime via the MODEL_SELECTION_MODE env var.
+model_selection_mode: RECOMMENDED
+
+# Per-artifact/agent selection mode overrides (Priority 5). Falls back to
+# model_selection_mode when an agent is absent. The MODEL_SELECTION_MODE env
+# var (used for testing) still overrides everything.
+selection_modes:
+  brd: RECOMMENDED
+  prd: RECOMMENDED
+  epic: AUTO
+  architecture: RECOMMENDED
+  nfr: RECOMMENDED
+  task: AUTO
+  code: RECOMMENDED
+  code_review: AUTO
+  functional_test: AUTO
+  sast: RECOMMENDED
+  dast: RECOMMENDED
+  release: MANUAL          # production release is mandatory human control
+
+# Human model-confirmation gate per artifact/agent (stored in config, not
+# hardcoded in agents). true = pause for human model confirmation before
+# generation when mode is RECOMMENDED/MANUAL.
+confirmation_gates:
+  brd: true
+  prd: true
+  epic: false
+  architecture: true
+  nfr: true
+  task: false
+  code: true
+  code_review: false
+  functional_test: false
+  sast: true
+  dast: true
+  release: true
+
+# Provider abstraction. The LLM runner (Copilot CLI/SDK) maps these names.
+providers:
+  copilot:
+    runner: copilot-cli            # usage_source will be 'unavailable' for token counts
+    enabled: true
+
+# Capability tiers (see prompt sections 24-25).
+tiers:
+  tier1_low:
+    description: classification, formatting, simple summarization, metadata extraction
+    profile: "Lower cost / potentially lower quality"
+    preferred: { provider: copilot, model: gpt-4o-mini }
+    fallback:  { provider: copilot, model: gpt-4o }
+  tier2_medium:
+    description: BRD, PRD, FSD, epic/story, test-case generation
+    profile: "Balanced"
+    preferred: { provider: copilot, model: gpt-4o }
+    fallback:  { provider: copilot, model: claude-sonnet-4 }
+  tier3_high:
+    description: architecture, complex code, debugging, security reasoning
+    profile: "Higher quality / Higher cost"
+    preferred: { provider: copilot, model: claude-sonnet-4 }
+    fallback:  { provider: copilot, model: gpt-4o }
+
+# Routing rules: first matching rule wins. complexity/reasoning/coding are
+# compared as low < medium < high.
+routing:
+  - match: { complexity: high }
+    tier: tier3_high
+  - match: { coding: high }
+    tier: tier3_high
+  - match: { reasoning: high }
+    tier: tier2_medium
+  - match: { complexity: medium }
+    tier: tier2_medium
+  - match: {}                      # default
+    tier: tier1_low
+
+# Escalation: on repeated QC failure, bump to the next-stronger tier.
+escalation:
+  enabled: true
+  on_qc_fail_count: 1              # after N consecutive QC fails, escalate tier
+  order: [tier1_low, tier2_medium, tier3_high]
+
+# Budget guards (per run). Null = unlimited.
+budget:
+  max_total_tokens: null
+  max_total_cost_usd: null

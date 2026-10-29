@@ -1,0 +1,15 @@
+# Artifact Contract — Epic / Feature / Story.
+artifact: Epic
+required_inputs: [approved_prd]
+required_outputs:
+  - Traceability Matrix
+  - Epic
+  - Feature
+  - User Stor
+  - Acceptance criteria
+validation_rules:
+  unique_ids_required: true
+  id_prefixes: ["EPIC-", "FEATURE-", "US-"]
+traceability:
+  required: true
+  references: ["PRD-FR-"]
