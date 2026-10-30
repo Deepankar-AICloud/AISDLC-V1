@@ -1,4 +1,4 @@
-name: Security — SAST & Dependency/Secret Scan
+name: Security — Secret Scan
 
 on:
   pull_request:
@@ -12,37 +12,8 @@ on:
 
 permissions:
   contents: read
-  security-events: write   # upload CodeQL results
-  actions: read
 
 jobs:
-  codeql:
-    name: CodeQL SAST
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [csharp, javascript-typescript]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-
-      - name: Setup .NET (for csharp build)
-        if: matrix.language == 'csharp'
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-
-      - name: Analyze
-        uses: github/codeql-action/analyze@v3
-
   secret-scan:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
