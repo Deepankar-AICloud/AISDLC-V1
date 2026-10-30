@@ -11,6 +11,7 @@ on:
     types: [created]
 
 permissions:
+  actions: write
   contents: write
   issues: write
   pull-requests: write
@@ -132,7 +133,27 @@ jobs:
         if: steps.cmd.outputs.valid == 'true'
         run: pip install -r scripts/requirements.txt
 
+      - name: Restore pending model state
+        if: steps.cmd.outputs.valid == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+        run: |
+          RUN_ID="$(gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow "Agentic SDLC Orchestrator" --limit 50 \
+            --json databaseId,displayTitle,status \
+            --jq "[.[] | select(.displayTitle == \"Agentic SDLC issue #$ISSUE_NUMBER\" and .status == \"completed\")][0].databaseId // empty")"
+          if [[ -z "$RUN_ID" ]]; then
+            echo "No completed orchestrator run found for issue #$ISSUE_NUMBER."
+            exit 1
+          fi
+          mkdir -p .sdlc
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "sdlc-state-issue-$ISSUE_NUMBER" --dir .sdlc
+          test -f ".sdlc/issue-$ISSUE_NUMBER.json"
+
       - name: Apply model decision
+        id: decision
         if: steps.cmd.outputs.valid == 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
@@ -159,6 +180,31 @@ jobs:
               --model "${{ steps.cmd.outputs.model }}" \
               --reason "${{ steps.cmd.outputs.reason }}")
           fi
+          CONFIRMED=$(printf '%s' "$OUT" | python -c 'import json,sys; print(str(bool(json.load(sys.stdin).get("ok"))).lower())')
+          if [ "$CONFIRMED" != "true" ]; then
+            echo "$OUT"
+            exit 1
+          fi
+          echo "confirmed=true" >> "$GITHUB_OUTPUT"
           gh issue comment "$NUM" --body $'✅ Model decision recorded:\n```json\n'"$OUT"$'\n```\nResuming the stage…'
-          # Resume orchestration for the confirmed stage.
-          gh workflow run agentic-sdlc.yml -f issue_number="$NUM" || echo "Dispatch manually."
+
+      - name: Save confirmed model state
+        if: steps.decision.outputs.confirmed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdlc-state-issue-${{ github.event.issue.number || github.event.pull_request.number }}
+          path: .sdlc/issue-${{ github.event.issue.number || github.event.pull_request.number }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Resume orchestrator with confirmed state
+        if: steps.decision.outputs.confirmed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          STATE_RUN_ID: ${{ github.run_id }}
+        run: |
+          gh workflow run agentic-sdlc.yml --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            --field issue_number="$ISSUE_NUMBER" \
+            --field state_run_id="$STATE_RUN_ID"

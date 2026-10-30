@@ -28,7 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     st = load_state(args.issue, args.run_id)
     if st is None or not st.pending_model_confirmation:
         print(json.dumps({"ok": False, "error": "no pending model confirmation"}))
-        return 0
+        return 1
 
     pending = st.pending_model_confirmation
     agent = pending.get("agent")

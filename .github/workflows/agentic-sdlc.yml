@@ -1,4 +1,5 @@
 name: Agentic SDLC Orchestrator
+run-name: Agentic SDLC issue #${{ inputs.issue_number }}
 
 # Central orchestrator entrypoint. Agents never call each other directly — this
 # workflow drives one stage per invocation, persists state, runs QC, and defers
@@ -10,6 +11,10 @@ on:
       issue_number:
         description: "Issue number to drive"
         required: true
+        type: string
+      state_run_id:
+        description: "Feedback workflow run containing the updated issue state"
+        required: false
         type: string
 
 # One concurrent run per issue; do not cancel in-flight state transitions.
@@ -51,6 +56,18 @@ jobs:
             exit 1
           fi
           echo "CodeQL succeeded for current main commit $MAIN_SHA."
+
+      - name: Restore state from model confirmation
+        if: inputs.state_run_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          STATE_RUN_ID: ${{ inputs.state_run_id }}
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: |
+          mkdir -p .sdlc
+          gh run download "$STATE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "sdlc-state-issue-$ISSUE_NUMBER" --dir .sdlc
+          test -f ".sdlc/issue-$ISSUE_NUMBER.json"
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -104,6 +121,15 @@ jobs:
           for k in ("status","agent","stage","artifact","human_review","qc_status","qc_score","run_id","recommended_model","selection_mode","readiness_status"):
               print(f"{k}={d.get(k)}")
           PY
+
+      - name: Save state for future workflow runs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdlc-state-issue-${{ inputs.issue_number }}
+          path: .sdlc/issue-${{ inputs.issue_number }}.json
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Readiness gate (await required information)
         if: steps.outcome.outputs.status == 'AWAITING_REQUIRED_INFORMATION'
