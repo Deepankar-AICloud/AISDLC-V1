@@ -139,10 +139,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
         run: |
-          RUN_ID="$(gh run list --repo "$GITHUB_REPOSITORY" \
-            --workflow "Agentic SDLC Orchestrator" --limit 50 \
-            --json databaseId,displayTitle,status \
-            --jq "[.[] | select(.displayTitle == \"Agentic SDLC issue #$ISSUE_NUMBER\" and .status == \"completed\")][0].databaseId // empty")"
+          RUN_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
+            --jq "[.artifacts[] | select(.name == \"sdlc-state-issue-$ISSUE_NUMBER\" and .expired == false)][0].workflow_run.id // empty")"
           if [[ -z "$RUN_ID" ]]; then
             echo "No completed orchestrator run found for issue #$ISSUE_NUMBER."
             exit 1

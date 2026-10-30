@@ -1,5 +1,5 @@
 name: Agentic SDLC Orchestrator
-run-name: Agentic SDLC issue #${{ inputs.issue_number }}
+run-name: 'Agentic SDLC issue #${{ inputs.issue_number }}'
 
 # Central orchestrator entrypoint. Agents never call each other directly — this
 # workflow drives one stage per invocation, persists state, runs QC, and defers
