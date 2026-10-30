@@ -84,6 +84,12 @@ stakeholders, then add `sdlc:start` again to resume. You can also create a
 requirement issue yourself and label it `sdlc:start`; it will wait until CodeQL
 passes for the current `main` commit. Manual dispatch is gated the same way.
 
+When the orchestrator adds `sdlc:awaiting-info`, add the missing requirement
+details as a human issue comment. The CodeQL gate automatically resumes that
+issue using the saved state; GitHub Actions comments and `/model` or `/agent`
+commands do not trigger this path. Human comments are added to the requirement
+context for the readiness check and generation.
+
 Each orchestrator run advances **one stage**, opens or updates a stage PR, and
 waits for human approval. Approving the PR resumes the next stage.
 
@@ -115,7 +121,7 @@ GitHub Actions Job Summary. Cost figures are labeled `estimated` / `unavailable`
 |---|---|
 | `ci.yml` | Build/lint/test/coverage for .NET + React (paths `src/**`) |
 | `security.yml` | Gitleaks secret scan; CodeQL runs through GitHub Default setup |
-| `agentic-sdlc-codeql-gate.yml` | Create or dispatch SDLC intake issues after CodeQL succeeds |
+| `agentic-sdlc-codeql-gate.yml` | Create, dispatch, or resume SDLC intake after CodeQL succeeds |
 | `deploy-dev.yml` | OIDC login → Bicep → deploy to DEV App Service → smoke test |
 | `deploy-staging.yml` | Deploy to staging slot → tests → OWASP ZAP DAST |
 | `deploy-production.yml` | Mandatory `production` environment approval → slot swap → health checks |

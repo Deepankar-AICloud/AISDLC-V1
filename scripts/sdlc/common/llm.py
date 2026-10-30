@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import os
+import tempfile
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -82,9 +84,23 @@ def run_llm(
             error="copilot_cli_not_found",
         )
 
-    cmd = ["copilot", "-p", prompt]
-    if allow_tools:
-        cmd.append("--allow-all-tools")
+    cmd = ["copilot", "-p", prompt, "--model", actual_model,
+           "--allow-all-tools", "--silent"]
+    env = os.environ.copy()
+    for key in ("GH_TOKEN", "GITHUB_TOKEN", "ACTIONS_RUNTIME_TOKEN",
+                "ACTIONS_ID_TOKEN_REQUEST_TOKEN"):
+        env.pop(key, None)
+
+    workdir = None
+    tempdir = None
+    if not allow_tools:
+        prompt = (
+            "Generation-only request: do not invoke tools, run commands, inspect "
+            "files, or modify files. Return only the requested text.\n\n" + prompt
+        )
+        cmd[2] = prompt
+        tempdir = tempfile.TemporaryDirectory(prefix="sdlc-copilot-")
+        workdir = tempdir.name
 
     start = time.monotonic()
     try:
@@ -96,10 +112,15 @@ def run_llm(
             errors="replace",
             timeout=timeout_s,
             check=False,
+            cwd=workdir,
+            env=env,
         )
     except subprocess.TimeoutExpired:
         usage.latency_ms = int((time.monotonic() - start) * 1000)
         return LLMResult(text="", usage=usage, ok=False, error="timeout")
+    finally:
+        if tempdir is not None:
+            tempdir.cleanup()
 
     usage.latency_ms = int((time.monotonic() - start) * 1000)
     if proc.returncode != 0:
@@ -107,6 +128,9 @@ def run_llm(
             text=proc.stdout or "",
             usage=usage,
             ok=False,
-            error=(proc.stderr or "nonzero_exit").strip()[:500],
+            error=(proc.stderr or proc.stdout or "nonzero_exit").strip()[:500],
         )
-    return LLMResult(text=(proc.stdout or "").strip(), usage=usage, ok=True)
+    text = (proc.stdout or "").strip()
+    if not text:
+        return LLMResult(text="", usage=usage, ok=False, error="empty_response")
+    return LLMResult(text=text, usage=usage, ok=True)

@@ -96,8 +96,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           ISSUE="${{ steps.meta.outputs.issue }}"
-          gh issue view "$ISSUE" --json title,body \
-            --jq '"TITLE: \(.title)\n\nBODY:\n\(.body)"' \
+          gh issue view "$ISSUE" --json title,body,comments \
+            --jq '"TITLE: \(.title)\n\nBODY:\n\(.body)\n\nHUMAN COMMENTS:\n" + ([.comments[] | select(.author.login != "github-actions" and .author.login != "github-actions[bot]" and (.body | startswith("/model ") | not) and (.body | startswith("/agent ") | not)) | .body] | join("\n---\n"))' \
             > /tmp/context.txt || echo "No issue context available." > /tmp/context.txt
           echo "Context captured ($(wc -l < /tmp/context.txt) lines)."
 
@@ -130,6 +130,20 @@ jobs:
           path: .sdlc/issue-${{ inputs.issue_number }}.json
           if-no-files-found: ignore
           retention-days: 30
+
+      - name: Mark issue waiting for information
+        if: steps.outcome.outputs.status == 'AWAITING_REQUIRED_INFORMATION'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ steps.meta.outputs.issue }}
+        run: gh issue edit "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label sdlc:awaiting-info
+
+      - name: Clear information-needed label
+        if: steps.outcome.outputs.status != 'AWAITING_REQUIRED_INFORMATION'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ steps.meta.outputs.issue }}
+        run: gh issue edit "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --remove-label sdlc:awaiting-info || true
 
       - name: Readiness gate (await required information)
         if: steps.outcome.outputs.status == 'AWAITING_REQUIRED_INFORMATION'

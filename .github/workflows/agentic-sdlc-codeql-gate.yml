@@ -3,6 +3,8 @@ name: Agentic SDLC CodeQL Gate
 on:
   issues:
     types: [labeled]
+  issue_comment:
+    types: [created]
   workflow_run:
     workflows: [CodeQL]
     types: [completed]
@@ -17,7 +19,8 @@ jobs:
   dispatch:
     if: >-
       (github.event_name == 'issues' && github.event.label.name == 'sdlc:start') ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request == null && github.event.comment.user.login != 'github-actions' && github.event.comment.user.login != 'github-actions[bot]')
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch eligible requirement issues
@@ -26,10 +29,49 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           CODEQL_SHA: ${{ github.event.workflow_run.head_sha }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_AUTHOR_LOGIN: ${{ github.event.comment.user.login }}
         run: |
           MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
 
-          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+          if [[ "$EVENT_NAME" == "issue_comment" ]]; then
+            if [[ "$COMMENT_AUTHOR_LOGIN" == "github-actions" || "$COMMENT_AUTHOR_LOGIN" == "github-actions[bot]" ]]; then
+              echo "Ignoring GitHub Actions comment."
+              exit 0
+            fi
+            case "$COMMENT_BODY" in
+              /model*|/agent*)
+                echo "Ignoring workflow command comment."
+                exit 0
+                ;;
+            esac
+            ISSUE_STATE="$(gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --json state --jq .state)"
+            if [[ "$ISSUE_STATE" != "OPEN" ]]; then
+              echo "Issue #$ISSUE_NUMBER is closed; not resuming SDLC."
+              exit 0
+            fi
+            LABELS="$(gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" \
+              --json labels --jq '[.labels[].name] | join(",")')"
+            if [[ ",$LABELS," != *",sdlc:awaiting-info,"* ]]; then
+              echo "Issue #$ISSUE_NUMBER is not waiting for information."
+              exit 0
+            fi
+            CODEQL_SHA="$(gh run list --repo "$GITHUB_REPOSITORY" \
+              --workflow CodeQL --branch main --limit 1 \
+              --json headSha,conclusion \
+              --jq '.[0] | select(.conclusion == "success") | .headSha')"
+            if [[ "$CODEQL_SHA" != "$MAIN_SHA" ]]; then
+              echo "CodeQL has not succeeded for current main commit $MAIN_SHA."
+              exit 1
+            fi
+            STATE_RUN_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
+              --jq "[.artifacts[] | select(.name == \"sdlc-state-issue-$ISSUE_NUMBER\" and .expired == false)][0].workflow_run.id // empty")"
+            if [[ -z "$STATE_RUN_ID" ]]; then
+              echo "No saved SDLC state found for issue #$ISSUE_NUMBER."
+              exit 1
+            fi
+            ISSUES="$ISSUE_NUMBER"
+          elif [[ "$EVENT_NAME" == "workflow_run" ]]; then
             if [[ "$CODEQL_SHA" != "$MAIN_SHA" ]]; then
               echo "Ignoring stale CodeQL result for $CODEQL_SHA; main is $MAIN_SHA."
               exit 0
@@ -75,6 +117,22 @@ jobs:
             [[ -z "$issue" ]] && continue
             LABELS="$(gh issue view "$issue" --repo "$GITHUB_REPOSITORY" \
               --json labels --jq '[.labels[].name] | join(",")')"
+            if [[ "$EVENT_NAME" == "issue_comment" ]]; then
+              if ! gh issue edit "$issue" --repo "$GITHUB_REPOSITORY" \
+                --remove-label sdlc:awaiting-info; then
+                echo "Could not clear awaiting-info label from issue #$issue."
+                exit 1
+              fi
+              if ! gh workflow run agentic-sdlc.yml --repo "$GITHUB_REPOSITORY" \
+                --ref main --field issue_number="$issue" \
+                --field state_run_id="$STATE_RUN_ID"; then
+                gh issue edit "$issue" --repo "$GITHUB_REPOSITORY" \
+                  --add-label sdlc:awaiting-info
+                exit 1
+              fi
+              echo "Resumed Agentic SDLC for issue #$issue after human context comment."
+              continue
+            fi
             if [[ ",$LABELS," != *",sdlc:start,"* ]]; then
               continue
             fi

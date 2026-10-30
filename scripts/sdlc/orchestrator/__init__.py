@@ -232,6 +232,24 @@ class Orchestrator:
                 )
             else:
                 result = self._stub_result(agent, choice)
+            if not result.ok:
+                self.log.event("generation_failed", agent=agent_key,
+                               error=result.error or "unknown generation error")
+                st.transition(State.NEEDS_HUMAN_INTERVENTION,
+                              f"LLM generation failed for {agent_key}")
+                save_state(st)
+                self.telemetry.flush()
+                return StageOutcome(
+                    gen_state, agent_key, None, None,
+                    "NEEDS_HUMAN", retries, None, human_review,
+                    recommendation=rec.to_dict(), model_decision=decision.to_dict(),
+                    selection_mode=mode, readiness=rd.to_dict(),
+                    diagnosis={
+                        "cause": "generation_error",
+                        "action": "HUMAN_INTERVENTION",
+                        "rationale": "Copilot CLI generation failed; inspect the run logs for details.",
+                    },
+                )
             content = result.text
             artifact_path = self._persist_artifact(agent, content)
 
