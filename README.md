@@ -10,7 +10,7 @@ This repository contains two integrated systems:
 
 ---
 
-## SmartServe application
+### SmartServe application
 
 | Layer | Technology | Location |
 |---|---|---|
@@ -90,7 +90,7 @@ pip install -r scripts/requirements.txt
 python -m scripts.sdlc.run --issue 1 --context "..." --no-llm
 ```
 
-## Traceability
+### Traceability
 
 `REQ → BRD-REQ → PRD-FR → EPIC → FEATURE → US → ARCH-COMP → TASK → CODE → UT → FT → SEC → RELEASE`
 
