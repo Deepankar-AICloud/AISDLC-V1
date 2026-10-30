@@ -1,0 +1,68 @@
+name: Agentic SDLC CodeQL Gate
+
+on:
+  issues:
+    types: [labeled]
+  workflow_run:
+    workflows: [CodeQL]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+jobs:
+  dispatch:
+    if: >-
+      (github.event_name == 'issues' && github.event.label.name == 'sdlc:start') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch eligible requirement issues
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          CODEQL_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            if [[ "$CODEQL_SHA" != "$MAIN_SHA" ]]; then
+              echo "Ignoring stale CodeQL result for $CODEQL_SHA; main is $MAIN_SHA."
+              exit 0
+            fi
+            ISSUES="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+              --label sdlc:start --limit 100 --json number --jq '.[].number')"
+          else
+            CODEQL_SHA="$(gh run list --repo "$GITHUB_REPOSITORY" \
+              --workflow CodeQL --branch main --limit 1 \
+              --json headSha,conclusion \
+              --jq '.[0] | select(.conclusion == "success") | .headSha')"
+            if [[ "$CODEQL_SHA" != "$MAIN_SHA" ]]; then
+              gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" \
+                --body "SDLC is queued: CodeQL must succeed for the current main commit before generation starts. The workflow resumes automatically after CodeQL passes."
+              echo "Issue #$ISSUE_NUMBER remains queued until CodeQL succeeds for main."
+              exit 0
+            fi
+            ISSUES="$ISSUE_NUMBER"
+          fi
+
+          while IFS= read -r issue; do
+            [[ -z "$issue" ]] && continue
+            LABELS="$(gh issue view "$issue" --repo "$GITHUB_REPOSITORY" \
+              --json labels --jq '[.labels[].name] | join(",")')"
+            if [[ ",$LABELS," != *",sdlc:start,"* ]]; then
+              continue
+            fi
+
+            gh issue edit "$issue" --repo "$GITHUB_REPOSITORY" --remove-label sdlc:start
+            if ! gh workflow run agentic-sdlc.yml --repo "$GITHUB_REPOSITORY" \
+              --ref main --field issue_number="$issue"; then
+              gh issue edit "$issue" --repo "$GITHUB_REPOSITORY" --add-label sdlc:start
+              exit 1
+            fi
+            echo "Dispatched Agentic SDLC for issue #$issue after CodeQL success."
+          done <<< "$ISSUES"

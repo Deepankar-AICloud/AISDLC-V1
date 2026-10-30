@@ -5,8 +5,6 @@ name: Agentic SDLC Orchestrator
 # human approvals to the artifact-review / feedback-handler workflows.
 
 on:
-  issues:
-    types: [labeled]
   workflow_dispatch:
     inputs:
       issue_number:
@@ -21,22 +19,38 @@ concurrency:
 
 # Least privilege.
 permissions:
+  actions: read
   contents: write
   issues: write
   pull-requests: write
 
 jobs:
   orchestrate:
-    # Only start when the control label is applied, or via manual dispatch.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.label.name == 'sdlc:start')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Verify CodeQL passed for current main
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          CODEQL_SHA="$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow CodeQL \
+            --branch main \
+            --limit 1 \
+            --json headSha,conclusion \
+            --jq '.[0] | select(.conclusion == "success") | .headSha')"
+
+          if [[ -z "$CODEQL_SHA" || "$CODEQL_SHA" != "$MAIN_SHA" ]]; then
+            echo "CodeQL has not succeeded for current main commit $MAIN_SHA."
+            exit 1
+          fi
+          echo "CodeQL succeeded for current main commit $MAIN_SHA."
 
       - name: Setup Python
         uses: actions/setup-python@v5

@@ -71,13 +71,19 @@ GitHub Issue → Orchestrator → (Model Router) → Agent → QC
 | Traceability engine | `scripts/sdlc/traceability/` |
 | Reports | `scripts/sdlc/reporting.py` → `reports/<run-id>/` |
 | Configuration | `config/agents.yml`, `models.yml`, `quality-gates.yml`, `pricing.yml`, `environments.yml` |
-| Workflows | `.github/workflows/agentic-sdlc.yml`, `artifact-review.yml`, `feedback-handler.yml` |
+| Workflows | `.github/workflows/agentic-sdlc-codeql-gate.yml`, `agentic-sdlc.yml`, `artifact-review.yml`, `feedback-handler.yml` |
 
 ### Trigger
 
-Label an issue `sdlc:start` (or dispatch `agentic-sdlc.yml` with an issue
-number). Each run advances **one stage**, opens/updates a stage PR, and waits
-for human approval. Approving the PR resumes the orchestrator.
+Create a requirement issue with the business problem, objective, stakeholders,
+scope, and constraints, then add the `sdlc:start` label. The CodeQL gate waits
+for a successful scan of the current `main` commit before dispatching the
+orchestrator. If CodeQL has not passed yet, the issue remains queued and starts
+after a matching successful CodeQL run. Manual dispatch is also blocked unless
+the current `main` commit has passed CodeQL.
+
+Each orchestrator run advances **one stage**, opens or updates a stage PR, and
+waits for human approval. Approving the PR resumes the next stage.
 
 Safe feedback commands in PR/issue comments (allowlisted):
 `/agent revise|regenerate|rerun-qc|explain|status`.
@@ -106,7 +112,8 @@ GitHub Actions Job Summary. Cost figures are labeled `estimated` / `unavailable`
 | Workflow | Purpose |
 |---|---|
 | `ci.yml` | Build/lint/test/coverage for .NET + React (paths `src/**`) |
-| `security.yml` | CodeQL SAST + secret scan |
+| `security.yml` | Gitleaks secret scan; CodeQL runs through GitHub Default setup |
+| `agentic-sdlc-codeql-gate.yml` | Dispatch queued SDLC requirement issues only after CodeQL succeeds |
 | `deploy-dev.yml` | OIDC login → Bicep → deploy to DEV App Service → smoke test |
 | `deploy-staging.yml` | Deploy to staging slot → tests → OWASP ZAP DAST |
 | `deploy-production.yml` | Mandatory `production` environment approval → slot swap → health checks |
