@@ -2,7 +2,7 @@ name: Agentic SDLC CodeQL Gate
 
 on:
   issues:
-    types: [labeled]
+    types: [labeled, edited]
   issue_comment:
     types: [created]
   workflow_run:
@@ -18,7 +18,8 @@ permissions:
 jobs:
   dispatch:
     if: >-
-      (github.event_name == 'issues' && github.event.label.name == 'sdlc:start') ||
+      (github.event_name == 'issues' && github.event.action == 'labeled' && github.event.label.name == 'sdlc:start') ||
+      (github.event_name == 'issues' && github.event.action == 'edited' && github.event.changes.body != null && github.event.issue.pull_request == null && github.event.sender.login != 'github-actions' && github.event.sender.login != 'github-actions[bot]') ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request == null && github.event.comment.user.login != 'github-actions' && github.event.comment.user.login != 'github-actions[bot]')
     runs-on: ubuntu-latest
@@ -30,11 +31,12 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           CODEQL_SHA: ${{ github.event.workflow_run.head_sha }}
           COMMENT_BODY: ${{ github.event.comment.body }}
-          COMMENT_AUTHOR_LOGIN: ${{ github.event.comment.user.login }}
+          COMMENT_AUTHOR_LOGIN: ${{ github.event.comment.user.login || github.event.sender.login }}
+          RESUME: ${{ github.event_name == 'issue_comment' || github.event.action == 'edited' }}
         run: |
           MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
 
-          if [[ "$EVENT_NAME" == "issue_comment" ]]; then
+          if [[ "$RESUME" == "true" ]]; then
             if [[ "$COMMENT_AUTHOR_LOGIN" == "github-actions" || "$COMMENT_AUTHOR_LOGIN" == "github-actions[bot]" ]]; then
               echo "Ignoring GitHub Actions comment."
               exit 0
@@ -117,7 +119,7 @@ jobs:
             [[ -z "$issue" ]] && continue
             LABELS="$(gh issue view "$issue" --repo "$GITHUB_REPOSITORY" \
               --json labels --jq '[.labels[].name] | join(",")')"
-            if [[ "$EVENT_NAME" == "issue_comment" ]]; then
+            if [[ "$RESUME" == "true" ]]; then
               if ! gh issue edit "$issue" --repo "$GITHUB_REPOSITORY" \
                 --remove-label sdlc:awaiting-info; then
                 echo "Could not clear awaiting-info label from issue #$issue."

@@ -82,6 +82,19 @@ jobs:
           curl -fsSL https://gh.io/copilot-install | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Verify Copilot credentials
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: |
+          if [[ -z "$COPILOT_GITHUB_TOKEN" ]]; then
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" \
+              --body "⛔ BRD generation cannot run: repository secret \`COPILOT_GITHUB_TOKEN\` is not configured. Add a fine-grained PAT with Copilot access under Settings → Secrets and variables → Actions, then add the \`sdlc:start\` label again."
+            echo "::error::COPILOT_GITHUB_TOKEN secret is not configured."
+            exit 1
+          fi
+
       - name: Resolve issue number
         id: meta
         env:
