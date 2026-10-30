@@ -79,8 +79,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           ISSUE="${{ steps.meta.outputs.issue }}"
-          gh issue view "$ISSUE" --json title,body,comments \
-            --jq '"ISSUE #\(.number // '"$ISSUE"')\nTITLE: \(.title)\n\nBODY:\n\(.body)\n\nCOMMENTS:\n" + ([.comments[].body] | join("\n---\n"))' \
+          gh issue view "$ISSUE" --json title,body \
+            --jq '"TITLE: \(.title)\n\nBODY:\n\(.body)"' \
             > /tmp/context.txt || echo "No issue context available." > /tmp/context.txt
           echo "Context captured ($(wc -l < /tmp/context.txt) lines)."
 

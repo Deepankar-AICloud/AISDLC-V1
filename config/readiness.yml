@@ -16,7 +16,7 @@ defaults:
 artifacts:
   brd:
     mandatory:
-      business_problem: [problem, issue, pain, need, request, require, cannot, unable, lack, want, missing]
+      business_problem: [problem, pain, need, request, require, cannot, unable, lack, want, missing]
       business_objective: [objective, goal, outcome, so that, enable, provide, allow, improve, reduce, access, support, automate]
       stakeholders: [employee, manager, user, stakeholder, customer, admin, reviewer, role, team, security, auditor]
     optional:

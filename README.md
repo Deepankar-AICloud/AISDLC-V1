@@ -75,12 +75,14 @@ GitHub Issue → Orchestrator → (Model Router) → Agent → QC
 
 ### Trigger
 
-Create a requirement issue with the business problem, objective, stakeholders,
-scope, and constraints, then add the `sdlc:start` label. The CodeQL gate waits
-for a successful scan of the current `main` commit before dispatching the
-orchestrator. If CodeQL has not passed yet, the issue remains queued and starts
-after a matching successful CodeQL run. Manual dispatch is also blocked unless
-the current `main` commit has passed CodeQL.
+After CodeQL succeeds for a new `main` commit, the gate dispatches an open issue
+labeled `sdlc:start`. If none is queued, it creates one deduplicated intake issue
+for that commit and starts the orchestrator. Since a code push does not provide
+business context, the orchestrator pauses and asks for it instead of inventing
+requirements. Edit the issue description with the real problem, objective, and
+stakeholders, then add `sdlc:start` again to resume. You can also create a
+requirement issue yourself and label it `sdlc:start`; it will wait until CodeQL
+passes for the current `main` commit. Manual dispatch is gated the same way.
 
 Each orchestrator run advances **one stage**, opens or updates a stage PR, and
 waits for human approval. Approving the PR resumes the next stage.
@@ -113,7 +115,7 @@ GitHub Actions Job Summary. Cost figures are labeled `estimated` / `unavailable`
 |---|---|
 | `ci.yml` | Build/lint/test/coverage for .NET + React (paths `src/**`) |
 | `security.yml` | Gitleaks secret scan; CodeQL runs through GitHub Default setup |
-| `agentic-sdlc-codeql-gate.yml` | Dispatch queued SDLC requirement issues only after CodeQL succeeds |
+| `agentic-sdlc-codeql-gate.yml` | Create or dispatch SDLC intake issues after CodeQL succeeds |
 | `deploy-dev.yml` | OIDC login → Bicep → deploy to DEV App Service → smoke test |
 | `deploy-staging.yml` | Deploy to staging slot → tests → OWASP ZAP DAST |
 | `deploy-production.yml` | Mandatory `production` environment approval → slot swap → health checks |

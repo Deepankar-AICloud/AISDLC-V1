@@ -36,6 +36,27 @@ jobs:
             fi
             ISSUES="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
               --label sdlc:start --limit 100 --json number --jq '.[].number')"
+            if [[ -z "$ISSUES" ]]; then
+              TITLE="SDLC intake for CodeQL commit $MAIN_SHA"
+              EXISTING_ISSUE="$(gh issue list --repo "$GITHUB_REPOSITORY" \
+                --state all --search "$MAIN_SHA in:title" --limit 1 \
+                --json number --jq '.[0].number // empty')"
+              if [[ -z "$EXISTING_ISSUE" ]]; then
+                cat > /tmp/sdlc-intake.md <<EOF
+          Opened after CodeQL passed on main.
+
+          Commit: $MAIN_SHA
+
+          No product context is recorded here yet. Add it to this description. The orchestrator will wait for details instead of inferring them.
+          EOF
+                ISSUE_URL="$(gh issue create --repo "$GITHUB_REPOSITORY" \
+                  --title "$TITLE" --body-file /tmp/sdlc-intake.md \
+                  --label sdlc:start)"
+                ISSUES="${ISSUE_URL##*/}"
+              else
+                echo "An intake issue already exists for $MAIN_SHA (#$EXISTING_ISSUE)."
+              fi
+            fi
           else
             CODEQL_SHA="$(gh run list --repo "$GITHUB_REPOSITORY" \
               --workflow CodeQL --branch main --limit 1 \
