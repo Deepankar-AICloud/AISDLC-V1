@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from .logging_util import now_iso
+from .config import models_config
 
 
 @dataclass
@@ -50,6 +51,21 @@ class LLMResult:
 
 def _copilot_available() -> bool:
     return shutil.which("copilot") is not None
+
+
+def _invoke(cmd: list[str], timeout_s: int, cwd: Optional[str],
+            env: dict[str, str]) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout_s,
+        check=False,
+        cwd=cwd,
+        env=env,
+    )
 
 
 def run_llm(
@@ -103,18 +119,15 @@ def run_llm(
         workdir = tempdir.name
 
     start = time.monotonic()
+    fallback_model = models_config().get("unavailable_model_fallback")
     try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout_s,
-            check=False,
-            cwd=workdir,
-            env=env,
-        )
+        proc = _invoke(cmd, timeout_s, workdir, env)
+        if (proc.returncode != 0 and fallback_model and actual_model != fallback_model
+                and "is not available" in (proc.stderr or proc.stdout or "")):
+            usage.actual_model = fallback_model
+            usage.fallback_reason = f"model '{actual_model}' not available to this account"
+            cmd[cmd.index("--model") + 1] = fallback_model
+            proc = _invoke(cmd, timeout_s, workdir, env)
     except subprocess.TimeoutExpired:
         usage.latency_ms = int((time.monotonic() - start) * 1000)
         return LLMResult(text="", usage=usage, ok=False, error="timeout")

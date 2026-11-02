@@ -43,19 +43,30 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
-          CODEQL_SHA="$(gh run list \
-            --repo "$GITHUB_REPOSITORY" \
-            --workflow CodeQL \
-            --branch main \
-            --limit 1 \
-            --json headSha,conclusion \
-            --jq '.[0] | select(.conclusion == "success") | .headSha')"
-
-          if [[ -z "$CODEQL_SHA" || "$CODEQL_SHA" != "$MAIN_SHA" ]]; then
-            echo "CodeQL has not succeeded for current main commit $MAIN_SHA."
-            exit 1
-          fi
-          echo "CodeQL succeeded for current main commit $MAIN_SHA."
+          # A push can dispatch this before CodeQL for the new commit finishes.
+          for attempt in $(seq 1 40); do
+            RUN="$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow CodeQL \
+              --commit "$MAIN_SHA" \
+              --limit 1 \
+              --json status,conclusion \
+              --jq '.[0] | "\(.status) \(.conclusion)"')"
+            STATUS="${RUN%% *}"
+            CONCLUSION="${RUN#* }"
+            if [[ "$STATUS" == "completed" ]]; then
+              if [[ "$CONCLUSION" == "success" ]]; then
+                echo "CodeQL succeeded for current main commit $MAIN_SHA."
+                exit 0
+              fi
+              echo "CodeQL concluded '$CONCLUSION' for current main commit $MAIN_SHA."
+              exit 1
+            fi
+            echo "Waiting for CodeQL on $MAIN_SHA (status: ${STATUS:-not started}), attempt $attempt/40."
+            sleep 30
+          done
+          echo "Timed out waiting for CodeQL on current main commit $MAIN_SHA."
+          exit 1
 
       - name: Restore state from model confirmation
         if: inputs.state_run_id != ''

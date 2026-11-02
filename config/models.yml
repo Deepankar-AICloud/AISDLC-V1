@@ -14,6 +14,11 @@ version: 1
 # Overridable at runtime via the MODEL_SELECTION_MODE env var.
 model_selection_mode: RECOMMENDED
 
+# Model retried once when Copilot reports the selected model is not available
+# to the token's account (plan/org policy). 'auto' lets Copilot pick an allowed
+# model; telemetry records it as actual_model with a fallback_reason. null = off.
+unavailable_model_fallback: auto
+
 # Per-artifact/agent selection mode overrides (Priority 5). Falls back to
 # model_selection_mode when an agent is absent. The MODEL_SELECTION_MODE env
 # var (used for testing) still overrides everything.
