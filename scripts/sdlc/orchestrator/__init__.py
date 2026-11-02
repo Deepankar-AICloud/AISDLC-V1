@@ -377,7 +377,7 @@ class Orchestrator:
             path = REPO_ROOT / up["produces"] / name
             if path.exists():
                 parts.append(f"\n\n# APPROVED UPSTREAM ARTIFACT: {name}\n"
-                             + path.read_text(encoding="utf-8")[:20000])
+                             + path.read_text(encoding="utf-8")[:80000])
         return "".join(parts)
 
     def _quality_target(self, agent: dict[str, Any]) -> Optional[int]:
