@@ -32,6 +32,9 @@ class WorkflowState:
     pending_information: Optional[dict[str, Any]] = None
     readiness: dict[str, str] = field(default_factory=dict)       # agent -> status
     assumptions: dict[str, list[str]] = field(default_factory=dict)  # agent -> items
+    # Last QC-failed draft per agent, so retries revise it instead of starting over.
+    drafts: dict[str, str] = field(default_factory=dict)
+    draft_findings: dict[str, list[str]] = field(default_factory=dict)
     history: list[dict[str, Any]] = field(default_factory=list)
     updated_at: str = field(default_factory=now_iso)
 

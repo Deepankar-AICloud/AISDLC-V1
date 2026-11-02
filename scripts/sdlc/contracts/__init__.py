@@ -96,9 +96,11 @@ def validate_output(agent_key: str, content: str) -> ContractResult:
         pattern = rf"{re.escape(prefix)}\d+\b"
         if not re.search(rf"\b{pattern}", text):
             violations.append(f"No IDs with required prefix '{prefix}'")
-        # Only headings/list items define an ID; tables and prose just reference it.
-        defined_ids.extend(re.findall(
-            rf"^[ \t]*(?:#{{1,6}}[ \t]+|[-*+][ \t]+|\d+\.[ \t]+)[*_`\[]*({pattern})",
+        # IDs are defined by headings (or by list items if no heading defines that prefix);
+        # tables, prose and other bullets only reference them.
+        heading_ids = re.findall(rf"^[ \t]*#{{1,6}}[ \t]+[*_`\[]*({pattern})", text, re.MULTILINE)
+        defined_ids.extend(heading_ids or re.findall(
+            rf"^[ \t]*(?:[-*+][ \t]+|\d+\.[ \t]+)[*_`\[]*({pattern})",
             text, re.MULTILINE))
     if rules.get("unique_ids_required"):
         dups = {i for i in defined_ids if defined_ids.count(i) > 1}
