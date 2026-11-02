@@ -123,13 +123,37 @@ def _semantic(content: str, artifact: str, gate: dict[str, Any],
     )
     if not result.ok:
         return ({d: 85.0 for d in dims}, [], ["LLM scoring unavailable; used baseline."])
+    data = _parse_scorecard(result.text)
+    if data is None:
+        retry = run_llm(
+            prompt + "\n\nReply with the JSON object only: no prose, no code fences.",
+            provider=provider,
+            requested_model=model,
+            actual_model=model,
+        )
+        data = _parse_scorecard(retry.text) if retry.ok else None
+    if data is None:
+        snippet = " ".join(result.text.split())[:300]
+        return ({d: 85.0 for d in dims},
+                [f"QC output was not valid JSON (evaluator reply began: {snippet!r})."], [])
     try:
-        match = re.search(r"\{.*\}", result.text, re.DOTALL)
-        data = json.loads(match.group(0)) if match else {}
-        scored = {d: float(data.get("dimensions", {}).get(d, 85.0)) for d in dims}
-        return scored, list(data.get("warnings", [])), list(data.get("recommendations", []))
-    except (json.JSONDecodeError, ValueError, AttributeError):
-        return ({d: 85.0 for d in dims}, ["QC output was not valid JSON."], [])
+        scored = {d: float(data["dimensions"].get(d, 85.0)) for d in dims}
+    except (TypeError, ValueError):
+        return ({d: 85.0 for d in dims}, ["QC scores were not numeric."], [])
+    return scored, list(data.get("warnings", [])), list(data.get("recommendations", []))
+
+
+def _parse_scorecard(text: str) -> Optional[dict[str, Any]]:
+    """Return the first JSON object in text that has a 'dimensions' mapping."""
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", text):
+        try:
+            obj, _ = decoder.raw_decode(text, match.start())
+        except ValueError:
+            continue
+        if isinstance(obj, dict) and isinstance(obj.get("dimensions"), dict):
+            return obj
+    return None
 
 
 def evaluate(artifact: str, content: str, *, use_llm: bool = True,
