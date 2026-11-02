@@ -254,7 +254,9 @@ class Orchestrator:
             artifact_path = self._persist_artifact(agent, content)
 
             qc = evaluate(prefix, content, use_llm=self.use_llm,
-                          generator_model=choice.model)
+                          generator_model=choice.model,
+                          gate_key=agent.get("quality_gate", agent_key),
+                          source_context=issue_context)
             # Artifact OUTPUT contract — violations block the artifact via QC.
             cout = artifact_contracts.validate_output(agent_key, content)
             if not cout.ok:

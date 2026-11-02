@@ -14,8 +14,9 @@ gates:
     threshold: 90
     dimensions: [completeness, clarity, traceability, testability, consistency]
     deterministic_checks:
-      - requires_sections: ["Executive Summary", "Business Requirements", "Scope", "Success Criteria"]
-      - requires_ids_prefixed: ["FR-", "NFR-"]
+      # Kept consistent with config/contracts/brd.yml; NFR- IDs belong to the NFR stage.
+      - requires_sections: ["Executive Summary", "Functional Requirements", "Scope", "Acceptance Criteria"]
+      - requires_ids_prefixed: ["FR-"]
       - no_fabricated_requirements: true
 
   prd:
