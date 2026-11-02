@@ -37,6 +37,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # The Code agent runs shell tools; it must not inherit push credentials.
+          persist-credentials: false
 
       - name: Verify CodeQL passed for current main
         env:
@@ -87,6 +89,16 @@ jobs:
 
       - name: Install orchestrator dependencies
         run: pip install -r scripts/requirements.txt
+
+      - name: Setup .NET (Code stage build/test)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup Node.js (Code stage build/test)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Install Copilot CLI (LLM runner)
         run: |
@@ -262,8 +274,9 @@ jobs:
 
           # Reuse the SAME branch/PR per stage (iterate in place).
           git checkout -B "$BRANCH"
-          git add docs reports .sdlc "$ARTIFACT" 2>/dev/null || true
+          git add docs reports .sdlc src "$ARTIFACT" 2>/dev/null || true
           git commit -m "chore(sdlc): ${AGENT} artifact for issue #${ISSUE} [skip ci]" || echo "nothing to commit"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push -u origin "$BRANCH" --force-with-lease
 
           # Open PR if none exists for this branch; else update its body.

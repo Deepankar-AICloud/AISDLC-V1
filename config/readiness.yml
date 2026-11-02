@@ -47,4 +47,4 @@ artifacts:
 
   code:
     mandatory: {}
-    upstream: [task]
+    upstream: [task, architecture]

@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from .logging_util import now_iso
-from .config import models_config
+from .config import REPO_ROOT, models_config
 
 
 @dataclass
@@ -108,7 +108,7 @@ def run_llm(
                 "ACTIONS_ID_TOKEN_REQUEST_TOKEN"):
         env.pop(key, None)
 
-    workdir = None
+    workdir = str(REPO_ROOT)
     tempdir = None
     if not allow_tools:
         prompt = (

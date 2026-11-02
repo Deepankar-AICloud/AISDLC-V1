@@ -16,11 +16,13 @@ Agents never call the next agent directly (prompt rule 9).
 """
 from __future__ import annotations
 
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-from ..common.config import agents_config, run_reports_dir
+from ..common.config import REPO_ROOT, agents_config, run_reports_dir
 from ..common.llm import LLMResult, LLMUsage, run_llm
 from ..common.logging_util import StructuredLogger, new_run_id
 from ..model_router import ModelChoice, recommend, select_model, selection_mode
@@ -214,6 +216,7 @@ class Orchestrator:
         gate_confirm = rec.confirmation_required
         previous_draft = st.drafts.get(agent_key)
         findings = st.draft_findings.get(agent_key, [])
+        writes = agent.get("writes_files") if self.use_llm else None
 
         while retries <= max_retries:
             # When a human confirmed the model, keep it fixed across retries;
@@ -232,13 +235,15 @@ class Orchestrator:
                 tier=choice.tier, reason=choice.selection_reason,
             )
             prompt = self._build_prompt(agent_key, agent, gen_context, previous_draft, findings)
+            dirty_before = self._dirty_paths() if writes else set()
             if self.use_llm:
                 result = run_llm(
                     prompt,
                     provider=choice.provider,
                     requested_model=choice.model,
                     actual_model=choice.model,
-                    allow_tools=False,
+                    allow_tools=bool(writes),
+                    timeout_s=2400 if writes else 600,
                 )
             else:
                 result = self._stub_result(agent, choice)
@@ -261,16 +266,29 @@ class Orchestrator:
                     },
                 )
             content = result.text
+            qc_content, build_issues = content, []
+            if writes:
+                discarded = self._discard_changes_outside(writes, dirty_before)
+                if discarded:
+                    self.log.event("discarded_out_of_scope_changes", agent=agent_key,
+                                   paths=discarded)
+                diff = self._diff(writes)
+                build_issues, build_log = self._build_checks(writes)
+                if not diff.strip():
+                    build_issues.append("No source files were changed under "
+                                        + ", ".join(writes) + ".")
+                qc_content = (content + "\n\n# BUILD AND TEST RESULTS (from the pipeline)\n"
+                              + build_log + "\n\n# SOURCE CHANGES (git diff)\n" + diff)
             artifact_path = self._persist_artifact(agent, content)
 
-            qc = evaluate(prefix, content, use_llm=self.use_llm,
+            qc = evaluate(prefix, qc_content, use_llm=self.use_llm,
                           generator_model=choice.model,
                           gate_key=agent.get("quality_gate", agent_key),
                           source_context=gen_context)
             # Artifact OUTPUT contract — violations block the artifact via QC.
             cout = artifact_contracts.validate_output(agent_key, content)
-            if not cout.ok:
-                qc.critical_issues.extend(cout.violations)
+            if not cout.ok or build_issues:
+                qc.critical_issues.extend(cout.violations + build_issues)
                 qc.status = "FAIL"
                 qc.overall_score = 0.0
             self.telemetry.record(
@@ -364,8 +382,72 @@ class Orchestrator:
                             diagnosis=(last_diag.to_dict() if last_diag else None))
 
     # -- helpers -----------------------------------------------------------
+    @staticmethod
+    def _git(*args: str) -> str:
+        return subprocess.run(["git", *args], cwd=REPO_ROOT, capture_output=True,
+                              text=True, check=False).stdout
+
+    def _dirty_paths(self) -> set[str]:
+        return {line[3:].split(" -> ")[-1].strip('"')
+                for line in self._git("status", "--porcelain", "-uall").splitlines()}
+
+    def _discard_changes_outside(self, allowed: list[str], keep: set[str]) -> list[str]:
+        """Revert files a tool-enabled agent changed outside its allowed paths."""
+        discarded: list[str] = []
+        for line in self._git("status", "--porcelain", "-uall").splitlines():
+            path = line[3:].split(" -> ")[-1].strip('"')
+            if path in keep or any(path == a or path.startswith(a.rstrip("/") + "/")
+                                   for a in allowed):
+                continue
+            if line.startswith("??"):
+                (REPO_ROOT / path).unlink(missing_ok=True)
+            else:
+                self._git("checkout", "HEAD", "--", path)
+            discarded.append(path)
+        return discarded
+
+    def _diff(self, allowed: list[str]) -> str:
+        allowed = [a for a in allowed if (REPO_ROOT / a).exists()]
+        if not allowed:
+            return ""
+        self._git("add", "--intent-to-add", "--", *allowed)
+        return (self._git("diff", "--stat", "--", *allowed) + "\n"
+                + self._git("diff", "--", *allowed))
+
+    def _build_checks(self, allowed: list[str]) -> tuple[list[str], str]:
+        """Build and test each changed project; return (critical issues, log)."""
+        changed = self._git("diff", "--name-only", "--", *allowed).splitlines()
+        commands: list[tuple[str, list[str], Path]] = []
+        for sln in sorted((REPO_ROOT / "src" / "backend").glob("*.sln")):
+            if any(p.startswith("src/backend/") for p in changed):
+                commands += [("dotnet build", ["dotnet", "build", str(sln)], REPO_ROOT),
+                             ("dotnet test", ["dotnet", "test", str(sln), "--no-build"], REPO_ROOT)]
+        frontend = REPO_ROOT / "src" / "frontend"
+        if (frontend / "package.json").exists() and any(
+                p.startswith("src/frontend/") for p in changed):
+            commands += [("npm install", ["npm", "install", "--no-audit", "--no-fund"], frontend),
+                         ("npm run build", ["npm", "run", "build"], frontend),
+                         ("vitest", ["npx", "vitest", "run", "--passWithNoTests"], frontend)]
+        issues: list[str] = []
+        log: list[str] = []
+        for name, cmd, cwd in commands:
+            if shutil.which(cmd[0]) is None:
+                issues.append(f"{name}: '{cmd[0]}' is not installed, so the change could not be verified.")
+                continue
+            try:
+                proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
+                                      timeout=900, check=False)
+            except subprocess.TimeoutExpired:
+                issues.append(f"{name} timed out after 900 s.")
+                continue
+            log.append(f"- {name}: {'passed' if proc.returncode == 0 else 'FAILED'}")
+            if proc.returncode != 0:
+                tail = (proc.stdout + proc.stderr)[-3000:]
+                issues.append(f"{name} failed (exit {proc.returncode}):\n{tail}")
+        return issues, "\n".join(log) or "- no build or test commands applied"
+
     def _upstream_context(self, agent_key: str) -> str:
-        from ..common.config import REPO_ROOT, load_config
+        from ..common.config import load_config
         upstream = (load_config("readiness").get("artifacts", {})
                     .get(agent_key, {}).get("upstream")) or []
         parts: list[str] = []
@@ -462,6 +544,8 @@ class Orchestrator:
                 "Revise the previous draft below; do not start over. Fix every QC finding, "
                 "keep all content that was not flagged, keep every required section, and "
                 "return the complete revised document.",
+                *(["The previous attempt's file changes may not be in the working tree; "
+                   "check and re-apply them as needed."] if agent.get("writes_files") else []),
                 "\n## QC findings to fix",
                 *[f"- {f}" for f in (findings or [])],
                 "\n## Previous draft (data)",
