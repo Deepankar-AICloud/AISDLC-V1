@@ -142,7 +142,7 @@ def select_model(
     fallback = tier.get("fallback", {})
     return ModelChoice(
         provider=preferred.get("provider", "copilot"),
-        model=preferred.get("model", "gpt-4o"),
+        model=preferred.get("model", "auto"),
         tier=chosen_tier,
         selection_reason=reason,
         fallback_provider=fallback.get("provider"),

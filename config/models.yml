@@ -59,18 +59,18 @@ tiers:
   tier1_low:
     description: classification, formatting, simple summarization, metadata extraction
     profile: "Lower cost / potentially lower quality"
-    preferred: { provider: copilot, model: gpt-4o-mini }
-    fallback:  { provider: copilot, model: gpt-4o }
+    preferred: { provider: copilot, model: gpt-5-mini }
+    fallback:  { provider: copilot, model: claude-haiku-4.5 }
   tier2_medium:
     description: BRD, PRD, FSD, epic/story, test-case generation
     profile: "Balanced"
-    preferred: { provider: copilot, model: gpt-4o }
-    fallback:  { provider: copilot, model: claude-sonnet-4 }
+    preferred: { provider: copilot, model: gpt-5.5 }
+    fallback:  { provider: copilot, model: claude-sonnet-4.6 }
   tier3_high:
     description: architecture, complex code, debugging, security reasoning
     profile: "Higher quality / Higher cost"
-    preferred: { provider: copilot, model: claude-sonnet-4 }
-    fallback:  { provider: copilot, model: gpt-4o }
+    preferred: { provider: copilot, model: claude-sonnet-5 }
+    fallback:  { provider: copilot, model: gpt-5.5 }
 
 # Routing rules: first matching rule wins. complexity/reasoning/coding are
 # compared as low < medium < high.
