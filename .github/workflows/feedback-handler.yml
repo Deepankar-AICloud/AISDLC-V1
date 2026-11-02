@@ -139,8 +139,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
         run: |
-          RUN_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
-            --jq "[.artifacts[] | select(.name == \"sdlc-state-issue-$ISSUE_NUMBER\" and .expired == false)][0].workflow_run.id // empty")"
+          RUN_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=sdlc-state-issue-$ISSUE_NUMBER&per_page=100" \
+            --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .workflow_run.id // empty')"
           if [[ -z "$RUN_ID" ]]; then
             echo "No completed orchestrator run found for issue #$ISSUE_NUMBER."
             exit 1
@@ -172,15 +172,16 @@ jobs:
           fi
 
           if [ "$SUB" = "approve" ]; then
-            OUT=$(python -m scripts.sdlc.model_confirm --issue "$NUM")
+            OUT=$(python -m scripts.sdlc.model_confirm --issue "$NUM") || true
           else
             OUT=$(python -m scripts.sdlc.model_confirm --issue "$NUM" \
               --model "${{ steps.cmd.outputs.model }}" \
-              --reason "${{ steps.cmd.outputs.reason }}")
+              --reason "${{ steps.cmd.outputs.reason }}") || true
           fi
-          CONFIRMED=$(printf '%s' "$OUT" | python -c 'import json,sys; print(str(bool(json.load(sys.stdin).get("ok"))).lower())')
+          CONFIRMED=$(printf '%s' "$OUT" | python -c 'import json,sys; print(str(bool(json.load(sys.stdin).get("ok"))).lower())' 2>/dev/null || echo false)
           if [ "$CONFIRMED" != "true" ]; then
             echo "$OUT"
+            gh issue comment "$NUM" --body $'❌ Model decision not applied:\n```json\n'"$OUT"$'\n```\nThe stage is not waiting for model confirmation. Wait for a new recommendation comment, then reply `/model approve`.'
             exit 1
           fi
           echo "confirmed=true" >> "$GITHUB_OUTPUT"
