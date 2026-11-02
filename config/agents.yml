@@ -67,7 +67,8 @@ agents:
     artifact_prefix: TASK
     capability: { task_type: task_planning, complexity: medium, reasoning: medium, coding: low }
     quality_gate: task
-    human_review: none
+    # Must not be "none": the PR is what commits the artifact and advances the stage.
+    human_review: optional
     next: code
 
   code:
