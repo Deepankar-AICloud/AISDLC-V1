@@ -15,7 +15,7 @@ required_outputs:
   - Acceptance Criteria
 validation_rules:
   unique_ids_required: true
-  id_prefixes: ["FR-"]
+  id_prefixes: ["BRD-REQ-"]
 traceability:
   required: true
   references: []          # BRD is the root; no upstream reference required

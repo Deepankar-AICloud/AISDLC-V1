@@ -35,10 +35,10 @@ Create your BRD in the following structure:
 ## 3. Business Requirements
 
 ### 3.1 Functional Requirements
-- FR-1: <Requirement description>
+- BRD-REQ-001: <Requirement description>
   - Priority: High/Medium/Low
   - Acceptance Criteria: <How to verify this requirement is met>
-- FR-2: <Requirement description>
+- BRD-REQ-002: <Requirement description>
   - Priority: High/Medium/Low
   - Acceptance Criteria: <How to verify this requirement is met>
 

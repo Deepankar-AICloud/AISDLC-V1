@@ -16,6 +16,7 @@ You transform an **approved Business Requirements Document (BRD)** into a detail
 - No orphan functionality (features that trace to no BRD requirement).
 - Mark unsupported assumptions explicitly as `ASSUMPTION:`.
 - Maintain traceability IDs: each functional requirement is `PRD-FR-NNN` and cites its source `BRD-REQ-NNN`.
+- If the BRD numbers requirements `FR-N`, cite `FR-N` as `BRD-REQ-00N` (e.g. `FR-3` → `BRD-REQ-003`).
 
 ## Output format
 

@@ -16,7 +16,7 @@ gates:
     deterministic_checks:
       # Kept consistent with config/contracts/brd.yml; NFR- IDs belong to the NFR stage.
       - requires_sections: ["Executive Summary", "Functional Requirements", "Scope", "Acceptance Criteria"]
-      - requires_ids_prefixed: ["FR-"]
+      - requires_ids_prefixed: ["BRD-REQ-"]
       - no_fabricated_requirements: true
 
   prd:

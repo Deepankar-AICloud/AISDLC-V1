@@ -175,7 +175,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           ISSUE="${{ steps.meta.outputs.issue }}"
-          QS=$(python -c "import json;d=json.load(open('/tmp/outcome.json'));r=d.get('readiness') or {};print(chr(10).join('- '+q for q in r.get('questions',[])) or '- (see readiness report)')")
+          QS=$(python -c "import json;d=json.load(open('/tmp/outcome.json'));r=d.get('readiness') or {};g=d.get('diagnosis') or {};v=((d.get('contract') or {}).get('output') or {}).get('violations') or [];print(chr(10).join('- '+q for q in r.get('questions',[])+g.get('questions',[])+v) or '- (see readiness report)')")
           gh issue comment "$ISSUE" --body "$(cat <<EOF
           ## ⛔ Generation blocked — required information missing (${{ steps.outcome.outputs.stage }})
 

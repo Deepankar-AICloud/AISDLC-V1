@@ -91,14 +91,17 @@ def validate_output(agent_key: str, content: str) -> ContractResult:
             violations.append(f"Missing required output: '{section}'")
 
     rules = c.get("validation_rules", {})
-    all_ids: list[str] = []
+    defined_ids: list[str] = []
     for prefix in rules.get("id_prefixes", []) or []:
-        matches = re.findall(rf"\b{re.escape(prefix)}\d+\b", text)
-        if not matches:
+        pattern = rf"{re.escape(prefix)}\d+\b"
+        if not re.search(rf"\b{pattern}", text):
             violations.append(f"No IDs with required prefix '{prefix}'")
-        all_ids.extend(matches)
+        # Only headings/list items define an ID; tables and prose just reference it.
+        defined_ids.extend(re.findall(
+            rf"^[ \t]*(?:#{{1,6}}[ \t]+|[-*+][ \t]+|\d+\.[ \t]+)[*_`\[]*({pattern})",
+            text, re.MULTILINE))
     if rules.get("unique_ids_required"):
-        dups = {i for i in all_ids if all_ids.count(i) > 1}
+        dups = {i for i in defined_ids if defined_ids.count(i) > 1}
         if dups:
             violations.append(f"Duplicate IDs: {', '.join(sorted(dups))}")
     if rules.get("requires_mermaid") and "```mermaid" not in low:
