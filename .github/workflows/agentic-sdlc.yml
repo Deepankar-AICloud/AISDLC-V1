@@ -299,7 +299,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           FINDINGS=$(python -c "import json;d=json.load(open('/tmp/outcome.json'));i=d.get('qc_issues') or [];m=d.get('qc_dimensions') or {};g=(d.get('diagnosis') or {}).get('rationale') or '';print(chr(10).join(['- '+x for x in i[:8]]+(['','Scores: '+', '.join(f'{k} {v:g}' for k,v in m.items())] if m else [])+(['','Reason: '+g] if g else [])) or '- (see run logs)')")
-          gh issue comment "${{ steps.meta.outputs.issue }}" --body "$(cat <<EOF
+          cat > /tmp/failsafe.md <<EOF
           ## ⚠️ ${{ steps.outcome.outputs.stage }} paused — QC ${{ steps.outcome.outputs.qc_status }} (score ${{ steps.outcome.outputs.qc_score }})
 
           Reviewer findings:
@@ -310,5 +310,11 @@ jobs:
 
           Run \`${{ steps.outcome.outputs.run_id }}\`.
           EOF
-          )"
+          # GitHub's API intermittently returns "GraphQL: Something went wrong".
+          for attempt in 1 2 3; do
+            gh issue comment "${{ steps.meta.outputs.issue }}" --repo "$GITHUB_REPOSITORY" \
+              --body-file /tmp/failsafe.md && break
+            [[ $attempt == 3 ]] && exit 1
+            sleep $((attempt * 15))
+          done
           echo "Workflow paused — fail-safe. Not advancing."
