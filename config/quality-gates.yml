@@ -35,7 +35,8 @@ gates:
 
   architecture:
     threshold: 90
-    dimensions: [completeness, consistency, security, maintainability, nfr_alignment]
+    # nfr_alignment is scored at the NFR stage, which runs after architecture.
+    dimensions: [completeness, consistency, security, maintainability, traceability]
     deterministic_checks:
       - requires_sections: ["Component Diagram", "Deployment Diagram", "Data Flow"]
       - requires_mermaid: true

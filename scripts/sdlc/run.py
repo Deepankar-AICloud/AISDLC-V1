@@ -61,6 +61,8 @@ def main(argv: list[str] | None = None) -> int:
         "selection_mode": outcome.selection_mode,
         "qc_score": outcome.qc.overall_score if outcome.qc else None,
         "qc_status": outcome.qc.status if outcome.qc else None,
+        "qc_dimensions": outcome.qc.dimensions if outcome.qc else None,
+        "qc_issues": (outcome.qc.critical_issues + outcome.qc.warnings) if outcome.qc else [],
         "artifact": outcome.artifact_path,
         "next_state": outcome.next_state,
         "human_review": outcome.human_review,

@@ -91,6 +91,13 @@ class Orchestrator:
                 and st.pending_information):
             agent_key = st.pending_information.get("agent")
             gen_state = AGENT_TO_STATE.get(agent_key, st.current_state)
+        elif st.current_state == State.NEEDS_HUMAN_INTERVENTION:
+            # A human replied after a failed stage: retry that stage from scratch.
+            gen_state = next((h["to"] for h in reversed(st.history)
+                              if h["to"] in STATE_TO_AGENT), st.current_state)
+            agent_key = STATE_TO_AGENT.get(gen_state)
+            if agent_key:
+                st.retries[agent_key] = 0
         else:
             gen_state = STAGE_FLOW.get(st.current_state, st.current_state)
             agent_key = STATE_TO_AGENT.get(gen_state)

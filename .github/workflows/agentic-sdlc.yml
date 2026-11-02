@@ -156,14 +156,14 @@ jobs:
           retention-days: 30
 
       - name: Mark issue waiting for information
-        if: steps.outcome.outputs.status == 'AWAITING_REQUIRED_INFORMATION'
+        if: steps.outcome.outputs.status == 'AWAITING_REQUIRED_INFORMATION' || steps.outcome.outputs.status == 'NEEDS_HUMAN'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ steps.meta.outputs.issue }}
         run: gh issue edit "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label sdlc:awaiting-info
 
       - name: Clear information-needed label
-        if: steps.outcome.outputs.status != 'AWAITING_REQUIRED_INFORMATION'
+        if: steps.outcome.outputs.status != 'AWAITING_REQUIRED_INFORMATION' && steps.outcome.outputs.status != 'NEEDS_HUMAN'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ steps.meta.outputs.issue }}
@@ -285,6 +285,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          gh issue comment "${{ steps.meta.outputs.issue }}" \
-            --body "⚠️ Agentic SDLC paused at **${{ steps.outcome.outputs.stage }}** (status: ${{ steps.outcome.outputs.status }}, QC: ${{ steps.outcome.outputs.qc_status }}). Human intervention required. See run \`${{ steps.outcome.outputs.run_id }}\` reports."
+          FINDINGS=$(python -c "import json;d=json.load(open('/tmp/outcome.json'));i=d.get('qc_issues') or [];m=d.get('qc_dimensions') or {};g=(d.get('diagnosis') or {}).get('rationale') or '';print(chr(10).join(['- '+x for x in i[:8]]+(['','Scores: '+', '.join(f'{k} {v:g}' for k,v in m.items())] if m else [])+(['','Reason: '+g] if g else [])) or '- (see run logs)')")
+          gh issue comment "${{ steps.meta.outputs.issue }}" --body "$(cat <<EOF
+          ## ⚠️ ${{ steps.outcome.outputs.stage }} paused — QC ${{ steps.outcome.outputs.qc_status }} (score ${{ steps.outcome.outputs.qc_score }})
+
+          Reviewer findings:
+
+          $FINDINGS
+
+          **To retry**, reply on this issue with any guidance (for example, which assumptions to keep or what to change). Your comment is added to the stage's input and the stage reruns automatically.
+
+          Run \`${{ steps.outcome.outputs.run_id }}\`.
+          EOF
+          )"
           echo "Workflow paused — fail-safe. Not advancing."
