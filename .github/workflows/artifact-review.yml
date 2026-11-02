@@ -7,29 +7,37 @@ name: Agentic SDLC — Artifact Review & Resume
 on:
   pull_request_review:
     types: [submitted]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue whose current stage was already approved (e.g. PR merged before resume was automated)"
+        required: true
+        type: string
 
 permissions:
+  actions: write
   contents: write
   issues: write
   pull-requests: write
 
 concurrency:
-  group: artifact-review-${{ github.event.pull_request.number }}
+  group: artifact-review-${{ github.event.pull_request.number || inputs.issue_number }}
   cancel-in-progress: false
 
 jobs:
   resume:
-    # Only on approval of an SDLC review PR.
+    # Only on approval of an SDLC review PR, or a manual resume.
     if: >-
-      github.event.review.state == 'approved' &&
-      startsWith(github.event.pull_request.head.ref, 'sdlc/issue-')
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.review.state == 'approved' &&
+       startsWith(github.event.pull_request.head.ref, 'sdlc/issue-'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: ${{ github.event.pull_request.head.ref || 'main' }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -41,19 +49,51 @@ jobs:
 
       - name: Derive issue number from branch
         id: meta
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          INPUT_ISSUE: ${{ inputs.issue_number }}
         run: |
-          BRANCH="${{ github.event.pull_request.head.ref }}"
-          ISSUE="$(echo "$BRANCH" | sed -E 's#sdlc/issue-([0-9]+)/.*#\1#')"
+          if [[ -n "$INPUT_ISSUE" ]]; then
+            ISSUE="$INPUT_ISSUE"
+          else
+            ISSUE="$(echo "$BRANCH" | sed -E 's#sdlc/issue-([0-9]+)/.*#\1#')"
+          fi
+          [[ "$ISSUE" =~ ^[0-9]+$ ]] || { echo "::error::Invalid issue number '$ISSUE'."; exit 1; }
           echo "issue=$ISSUE" >> "$GITHUB_OUTPUT"
+
+      - name: Restore issue state
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ steps.meta.outputs.issue }}
+        run: |
+          RUN_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=sdlc-state-issue-$ISSUE_NUMBER&per_page=100" \
+            --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .workflow_run.id // empty')"
+          if [[ -z "$RUN_ID" ]]; then
+            echo "::error::No saved SDLC state found for issue #$ISSUE_NUMBER."
+            exit 1
+          fi
+          mkdir -p .sdlc
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "sdlc-state-issue-$ISSUE_NUMBER" --dir .sdlc
+          test -f ".sdlc/issue-$ISSUE_NUMBER.json"
 
       - name: Mark stage approved & advance state
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           python -m scripts.sdlc.approve --issue "${{ steps.meta.outputs.issue }}" \
-            --reviewer "${{ github.event.review.user.login }}"
+            --reviewer "${{ github.event.review.user.login || github.actor }}"
+
+      - name: Save approved state
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdlc-state-issue-${{ steps.meta.outputs.issue }}
+          path: .sdlc/issue-${{ steps.meta.outputs.issue }}.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Merge the approved artifact PR
+        if: github.event_name == 'pull_request_review'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
@@ -64,5 +104,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
-          gh workflow run agentic-sdlc.yml -f issue_number="${{ steps.meta.outputs.issue }}" || \
-            echo "Could not auto-trigger next stage; dispatch manually."
+          gh workflow run agentic-sdlc.yml --repo "$GITHUB_REPOSITORY" --ref main \
+            -f issue_number="${{ steps.meta.outputs.issue }}" \
+            -f state_run_id="${{ github.run_id }}"

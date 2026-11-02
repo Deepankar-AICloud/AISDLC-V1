@@ -80,6 +80,11 @@ jobs:
             fi
             ISSUES="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
               --label sdlc:start --limit 100 --json number --jq '.[].number')"
+            COMMIT_SUBJECT="$(gh api "repos/${GITHUB_REPOSITORY}/commits/$MAIN_SHA" --jq '.commit.message' | head -n 1)"
+            if [[ -z "$ISSUES" && "$COMMIT_SUBJECT" == chore\(sdlc\):* ]]; then
+              echo "Skipping intake for SDLC artifact merge: $COMMIT_SUBJECT"
+              exit 0
+            fi
             if [[ -z "$ISSUES" ]]; then
               TITLE="SDLC intake for CodeQL commit $MAIN_SHA"
               EXISTING_ISSUE="$(gh issue list --repo "$GITHUB_REPOSITORY" \

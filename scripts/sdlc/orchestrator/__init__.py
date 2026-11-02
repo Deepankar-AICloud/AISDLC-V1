@@ -141,6 +141,7 @@ class Orchestrator:
         if rd.assumptions:
             st.assumptions[agent_key] = rd.assumptions
         save_state(st)
+        gen_context = issue_context + self._upstream_context(agent_key)
 
         # ---- MODEL RECOMMENDATION + HUMAN CONFIRMATION (before generation) ----
         rec = recommend(
@@ -149,7 +150,7 @@ class Orchestrator:
             agent_key=agent_key,
             quality_target=self._quality_target(agent),
             qc_fail_count=st.retries.get(agent_key, 0),
-            context_len=len(issue_context),
+            context_len=len(gen_context),
         )
         human_selected = st.selected_models.get(agent_key)
         override_reason = st.model_overrides.get(agent_key)
@@ -221,7 +222,7 @@ class Orchestrator:
                 "model_selected", agent=agent_key, model=choice.model,
                 tier=choice.tier, reason=choice.selection_reason,
             )
-            prompt = self._build_prompt(agent_key, agent, issue_context, qc)
+            prompt = self._build_prompt(agent_key, agent, gen_context, qc)
             if self.use_llm:
                 result = run_llm(
                     prompt,
@@ -256,7 +257,7 @@ class Orchestrator:
             qc = evaluate(prefix, content, use_llm=self.use_llm,
                           generator_model=choice.model,
                           gate_key=agent.get("quality_gate", agent_key),
-                          source_context=issue_context)
+                          source_context=gen_context)
             # Artifact OUTPUT contract — violations block the artifact via QC.
             cout = artifact_contracts.validate_output(agent_key, content)
             if not cout.ok:
@@ -348,6 +349,22 @@ class Orchestrator:
                             diagnosis=(last_diag.to_dict() if last_diag else None))
 
     # -- helpers -----------------------------------------------------------
+    def _upstream_context(self, agent_key: str) -> str:
+        from ..common.config import REPO_ROOT, load_config
+        upstream = (load_config("readiness").get("artifacts", {})
+                    .get(agent_key, {}).get("upstream")) or []
+        parts: list[str] = []
+        for key in upstream:
+            up = self.agents.get(key, {})
+            if not up.get("produces"):
+                continue
+            name = f"{up.get('artifact_prefix', key.upper())}-{self.issue_number or self.run_id}.md"
+            path = REPO_ROOT / up["produces"] / name
+            if path.exists():
+                parts.append(f"\n\n# APPROVED UPSTREAM ARTIFACT: {name}\n"
+                             + path.read_text(encoding="utf-8")[:20000])
+        return "".join(parts)
+
     def _quality_target(self, agent: dict[str, Any]) -> Optional[int]:
         cap = agent.get("capability", {})
         if "quality_target" in cap:

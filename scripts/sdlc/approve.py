@@ -32,13 +32,13 @@ def main(argv: list[str] | None = None) -> int:
     state = load_state(args.issue, args.run_id)
     if state is None:
         print(f"No state found for issue {args.issue}; nothing to approve.")
-        return 0
+        return 1
 
     current = state.current_state
     approved = _APPROVED.get(current)
     if approved is None:
         print(f"State {current} is not an approvable generation stage.")
-        return 0
+        return 1
 
     state.transition(approved, f"approved by {args.reviewer}")
     state.human_reviews[current] = state.human_reviews.get(current, 0) + 1

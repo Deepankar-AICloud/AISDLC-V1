@@ -111,7 +111,7 @@ def _semantic(content: str, artifact: str, gate: dict[str, Any],
     provider, model = _evaluator_choice(generator_model)
     prompt = _SEMANTIC_PROMPT.format(
         dims=", ".join(dims), artifact=artifact, content=content[:12000],
-        source=(source_context or "(not provided)")[:6000],
+        source=(source_context or "(not provided)")[:24000],
     )
     result = run_llm(
         prompt,

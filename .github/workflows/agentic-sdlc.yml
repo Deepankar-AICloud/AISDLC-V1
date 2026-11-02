@@ -270,11 +270,14 @@ jobs:
           if gh pr view "$BRANCH" >/dev/null 2>&1; then
             gh pr edit "$BRANCH" --body-file /tmp/pr_body.md || true
           else
-            gh pr create \
+            if ! gh pr create \
               --base main --head "$BRANCH" \
               --title "[SDLC] ${AGENT} artifact — issue #${ISSUE}" \
               --body-file /tmp/pr_body.md \
-              --label "sdlc:review"
+              --label "sdlc:review"; then
+              gh issue comment "$ISSUE" --body "⚠️ The ${AGENT} artifact passed QC and was pushed to branch \`${BRANCH}\`, but the review PR could not be opened. Enable **Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests**, then re-run this workflow for issue #${ISSUE}."
+              exit 1
+            fi
           fi
 
       - name: Fail-safe on needs-human / blocked
