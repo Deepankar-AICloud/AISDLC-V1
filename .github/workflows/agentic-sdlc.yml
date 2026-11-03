@@ -163,7 +163,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sdlc-state-issue-${{ inputs.issue_number }}
-          path: .sdlc/issue-${{ inputs.issue_number }}.json
+          path: |
+            .sdlc/issue-${{ inputs.issue_number }}.json
+            .sdlc/issue-${{ inputs.issue_number }}-*.patch
           if-no-files-found: ignore
           retention-days: 30
 

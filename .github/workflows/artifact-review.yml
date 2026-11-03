@@ -88,7 +88,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sdlc-state-issue-${{ steps.meta.outputs.issue }}
-          path: .sdlc/issue-${{ steps.meta.outputs.issue }}.json
+          path: |
+            .sdlc/issue-${{ steps.meta.outputs.issue }}.json
+            .sdlc/issue-${{ steps.meta.outputs.issue }}-*.patch
           if-no-files-found: error
           retention-days: 30
 
