@@ -274,7 +274,7 @@ jobs:
 
           # Reuse the SAME branch/PR per stage (iterate in place).
           git checkout -B "$BRANCH"
-          git add docs reports .sdlc src "$ARTIFACT" 2>/dev/null || true
+          git add docs reports .sdlc src infra "$ARTIFACT" 2>/dev/null || true
           git commit -m "chore(sdlc): ${AGENT} artifact for issue #${ISSUE} [skip ci]" || echo "nothing to commit"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push -u origin "$BRANCH" --force-with-lease

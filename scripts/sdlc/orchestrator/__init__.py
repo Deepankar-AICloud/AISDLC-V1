@@ -411,8 +411,11 @@ class Orchestrator:
         if not allowed:
             return ""
         self._git("add", "--intent-to-add", "--", *allowed)
-        return (self._git("diff", "--stat", "--", *allowed) + "\n"
-                + self._git("diff", "--", *allowed))
+        # Lockfiles are huge and unreviewable; they would crowd real code out of QC.
+        spec = [*allowed, ":(exclude,glob)**/package-lock.json",
+                ":(exclude,glob)**/*.Designer.cs", ":(exclude,glob)**/*ModelSnapshot.cs"]
+        return (self._git("diff", "--stat", "--", *spec) + "\n"
+                + self._git("diff", "--", *spec))
 
     def _build_checks(self, allowed: list[str]) -> tuple[list[str], str]:
         """Build and test each changed project; return (critical issues, log)."""

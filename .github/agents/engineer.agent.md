@@ -31,18 +31,27 @@ secrets — use Key Vault / Managed Identity / environment configuration.
 When run by the SDLC orchestrator you have file and shell tools in the
 repository root:
 - Implement the approved Task plan (`TASK-NNN`) by creating and editing files
-  under `src/backend` and `src/frontend` only. Changes anywhere else are
-  discarded. Do not run `git commit` or `git push`.
+  under `src/backend`, `src/frontend`, and `infra` only. Changes anywhere else
+  (including `.github/`) are discarded. Do not run `git commit` or `git push`.
 - Build and test what you change (`dotnet build` / `dotnet test` on
   `src/backend/SmartServe.sln`; `npm install`, `npm run build`, `npx vitest run`
   in `src/frontend`). The pipeline re-runs these and fails the stage on errors.
+- Implement every TASK in the plan. Only defer a task when it cannot be built
+  in this repository, and state the concrete blocker.
+- Write each status change and its audit record in the same database
+  transaction (one `SaveChanges`), recording old and new status.
 - Behaviour marked "(proposed)" in the Architecture or Task plan may be
-  implemented as proposed; say so in the summary rather than presenting it as
-  confirmed.
-- Reply with a Markdown summary containing `## Implementation Summary` (each
-  TASK ID implemented, partially implemented, or deferred, with the reason) and
-  `## Files` (each file created or modified). Report only builds and tests you
-  actually ran, with their results.
+  implemented, but label it `(proposed)` in one short code comment and in the
+  summary. Any choice not in the approved artifacts (extra audit events,
+  status codes, libraries, component names) is also `(proposed)`.
+- Keep comments to one short line, only where the code cannot speak for itself.
+- Reply with a Markdown summary containing:
+  - `## Implementation Summary`: a table with one row per TASK ID (never
+    combine IDs), its status (implemented / partial / deferred + reason), and
+    the exact files that implement it.
+  - `## Files`: each file created or modified.
+  - Builds and tests you actually ran, with results. Do not state test counts
+    or verification you did not perform.
 
 The legacy Ticket Tracker sections below are reference only.
 

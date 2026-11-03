@@ -76,7 +76,7 @@ agents:
     definition: .github/agents/engineer.agent.md
     produces: docs/code
     # Runs with file/shell tools; changes outside these paths are reverted.
-    writes_files: [src/backend, src/frontend]
+    writes_files: [src/backend, src/frontend, infra]
     artifact_prefix: CODE
     capability: { task_type: code, complexity: high, reasoning: high, coding: high }
     quality_gate: code
