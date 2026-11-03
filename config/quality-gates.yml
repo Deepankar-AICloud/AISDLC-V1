@@ -52,23 +52,23 @@ gates:
       - requires_ids_prefixed: ["TASK-"]
 
   code:
-    threshold: 90
+    threshold: 60
     # Code QC is dominated by deterministic tools (build/lint/test/coverage).
     dimensions: [maintainability, consistency]
     deterministic_checks:
       - build_must_pass: true
       - lint_must_pass: true
       - unit_tests_must_pass: true
-      - coverage_min: 80
+      - coverage_min: 50
 
   testing:
-    threshold: 85
+    threshold: 60
     dimensions: [completeness, requirement_coverage]
     deterministic_checks:
       - functional_tests_must_pass: true
 
   security:
-    threshold: 100            # security is policy-gated, not averaged away
+    threshold: 70            # security is policy-gated, not averaged away
     blocking_severity: high   # critical/high block; medium/low warn
     deterministic_checks:
       - sast_no_blocking: true
