@@ -411,10 +411,15 @@ class Orchestrator:
         if not allowed:
             return ""
         self._git("add", "--intent-to-add", "--", *allowed)
-        # Lockfiles are huge and unreviewable; they would crowd real code out of QC.
+        # Lockfiles/EF-generated files are huge; list them but omit their content from QC.
+        generated_suffixes = ("package-lock.json", ".Designer.cs", "ModelSnapshot.cs")
         spec = [*allowed, ":(exclude,glob)**/package-lock.json",
                 ":(exclude,glob)**/*.Designer.cs", ":(exclude,glob)**/*ModelSnapshot.cs"]
-        return (self._git("diff", "--stat", "--", *spec) + "\n"
+        generated = [n for n in self._git("diff", "--name-only", "--", *allowed).splitlines()
+                     if n.endswith(generated_suffixes)]
+        note = ("\nGenerated files in this change (content omitted from review):\n"
+                + "\n".join(f"- {n}" for n in generated) + "\n") if generated else ""
+        return (self._git("diff", "--stat", "--", *allowed) + note + "\n"
                 + self._git("diff", "--", *spec))
 
     def _build_checks(self, allowed: list[str]) -> tuple[list[str], str]:
