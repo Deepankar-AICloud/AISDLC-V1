@@ -45,10 +45,16 @@ repository root:
   summary. Any choice not in the approved artifacts (extra audit events,
   status codes, libraries, component names) is also `(proposed)`.
 - Keep comments to one short line, only where the code cannot speak for itself.
+- Frontend tests run with `npx vitest run --passWithNoTests`; add at least one
+  test for each frontend feature you build.
+- A task is "implemented" only when every file in its `Files` list exists and
+  works in production configuration (no stub or unconfigured service
+  registered); otherwise report it as "partial" with the gap.
 - Reply with a Markdown summary containing:
   - `## Implementation Summary`: a table with one row per TASK ID (never
-    combine IDs), its status (implemented / partial / deferred + reason), and
-    the exact files that implement it.
+    combine IDs), using the TASK IDs and titles exactly as written in the Task
+    plan, its status (implemented / partial / deferred + reason), and the exact
+    full file paths that implement it.
   - `## Files`: each file created or modified.
   - Builds and tests you actually ran, with results. Do not state test counts
     or verification you did not perform.
