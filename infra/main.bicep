@@ -121,6 +121,9 @@ resource plan 'Microsoft.Web/serverfarms@2023-12-01' = {
   properties: { reserved: true } // Linux
 }
 
+@description('(proposed) Object id of the Entra user/mailbox the API sends notification email as, via Graph sendMail')
+param graphSenderUserId string = ''
+
 var commonAppSettings = [
   { name: 'ApplicationInsights__ConnectionString', value: appInsights.properties.ConnectionString }
   { name: 'AzureAd__TenantId', value: entraTenantId }
@@ -128,6 +131,7 @@ var commonAppSettings = [
   { name: 'AzureAd__Instance', value: 'https://login.microsoftonline.com/' }
   { name: 'KeyVault__Uri', value: keyVault.properties.vaultUri }
   { name: 'ConnectionStrings__SmartServeDb', value: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=SmartServeDb;Authentication=Active Directory Managed Identity;Encrypt=True;' }
+  { name: 'Graph__SenderUserId', value: graphSenderUserId }
 ]
 
 // ── Backend API App Service (system-assigned Managed Identity) ─────────────
@@ -202,6 +206,16 @@ resource blobContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = 
     principalType: 'ServicePrincipal'
   }
 }
+
+// (proposed) Microsoft Graph application permissions (Mail.Send, User.Read.All, User.ReadBasic.All)
+// for the API's managed identity cannot be expressed as a standard Microsoft.Authorization
+// roleAssignment — they are Microsoft Graph app-role assignments that require directory-level
+// admin consent. Grant them out-of-band post-deployment, e.g.:
+//   az ad app permission admin-consent ... / or an AzureCLI deploymentScript invoking
+//   POST https://graph.microsoft.com/v1.0/servicePrincipals/{apiApp-principal-id}/appRoleAssignments
+// against the well-known Microsoft Graph service principal (appId 00000003-0000-0000-c000-000000000000),
+// run by a principal already holding Application.ReadWrite.All / AppRoleAssignment.ReadWrite.All.
+// Not automated here to avoid requiring elevated Graph-admin credentials inside this template.
 
 output apiAppName string = apiApp.name
 output webAppName string = webApp.name
