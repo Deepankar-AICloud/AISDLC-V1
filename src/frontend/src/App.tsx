@@ -1,27 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { api, AccessRequest, RequestCategory } from './api';
+import { api, PortalRequest, RequestKind, RequestType } from './api';
+import AdminRequestTypesPage from './features/admin-request-types/AdminRequestTypesPage';
 
-const CATEGORIES: RequestCategory[] = [
-  'GitHubAccess', 'AzureAccess', 'VpnAccess', 'ApplicationAccess',
-  'DatabaseAccess', 'ProductionAccess', 'SoftwareInstallation',
-  'LaptopRequest', 'HardwareRequest', 'PasswordSupport', 'GeneralSupport'
-];
+// (proposed) tab navigation: the PRD/Epics don't specify a nav structure, so this is a minimal wiring choice.
+type Tab = 'requests' | 'admin-request-types';
 
 export default function App(): React.ReactElement {
-  const [requests, setRequests] = useState<AccessRequest[]>([]);
+  const [tab, setTab] = useState<Tab>('requests');
+  const [requests, setRequests] = useState<PortalRequest[]>([]);
+  const [requestTypes, setRequestTypes] = useState<RequestType[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({
-    title: '',
-    description: '',
-    category: 'GitHubAccess' as RequestCategory
-  });
+  const [form, setForm] = useState({ kind: 'Access' as RequestKind, requestTypeId: '', title: '', description: '' });
 
   async function refresh(): Promise<void> {
     setLoading(true);
     setError(null);
     try {
-      setRequests(await api.list());
+      const [reqs, types] = await Promise.all([api.list(), api.requestTypes.list()]);
+      setRequests(reqs);
+      setRequestTypes(types);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -33,12 +31,25 @@ export default function App(): React.ReactElement {
     void refresh();
   }, []);
 
+  if (tab === 'admin-request-types') {
+    return (
+      <div>
+        <nav style={{ maxWidth: 920, margin: '1rem auto', padding: '0 1rem' }}>
+          <button type="button" onClick={() => setTab('requests')}>&larr; Back to requests</button>
+        </nav>
+        <AdminRequestTypesPage />
+      </div>
+    );
+  }
+
+  const typesForKind = requestTypes.filter((t) => t.kind === form.kind && t.isActive);
+
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     setError(null);
     try {
       await api.create(form);
-      setForm({ title: '', description: '', category: 'GitHubAccess' });
+      setForm({ ...form, title: '', description: '' });
       await refresh();
     } catch (err) {
       setError((err as Error).message);
@@ -49,6 +60,9 @@ export default function App(): React.ReactElement {
     <main style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 920, margin: '2rem auto', padding: '0 1rem' }}>
       <h1>SmartServe</h1>
       <p>Enterprise IT Service &amp; Access Request Portal</p>
+      <nav style={{ marginBottom: 16 }}>
+        <button type="button" onClick={() => setTab('admin-request-types')}>Manage request types (admin)</button>
+      </nav>
 
       {error && (
         <div role="alert" style={{ background: '#fde2e1', padding: '0.75rem', borderRadius: 6, marginBottom: 12 }}>
@@ -58,7 +72,35 @@ export default function App(): React.ReactElement {
 
       <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 16, marginBottom: 24 }}>
         <h2>New request</h2>
+        {/* (proposed) Submission form fields and labels: not specified by ARCH-23/TASK-23. */}
         <form onSubmit={submit}>
+          <div style={{ marginBottom: 8 }}>
+            <label>
+              Kind{' '}
+              <select
+                value={form.kind}
+                onChange={(e) => setForm({ ...form, kind: e.target.value as RequestKind, requestTypeId: '' })}
+              >
+                <option value="Access">Access</option>
+                <option value="Service">Service</option>
+              </select>
+            </label>
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <label>
+              Request type{' '}
+              <select
+                required
+                value={form.requestTypeId}
+                onChange={(e) => setForm({ ...form, requestTypeId: e.target.value })}
+              >
+                <option value="" disabled>Select a type…</option>
+                {typesForKind.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
           <div style={{ marginBottom: 8 }}>
             <label>
               Title<br />
@@ -82,19 +124,6 @@ export default function App(): React.ReactElement {
               />
             </label>
           </div>
-          <div style={{ marginBottom: 8 }}>
-            <label>
-              Category{' '}
-              <select
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value as RequestCategory })}
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </label>
-          </div>
           <button type="submit">Submit request</button>
         </form>
       </section>
@@ -105,9 +134,9 @@ export default function App(): React.ReactElement {
           <thead>
             <tr>
               <th style={th}>Title</th>
-              <th style={th}>Category</th>
+              <th style={th}>Kind</th>
+              <th style={th}>Type</th>
               <th style={th}>Status</th>
-              <th style={th}>Security review</th>
               <th style={th}>Created</th>
             </tr>
           </thead>
@@ -115,9 +144,9 @@ export default function App(): React.ReactElement {
             {requests.map((r) => (
               <tr key={r.id}>
                 <td style={td}>{r.title}</td>
-                <td style={td}>{r.category}</td>
+                <td style={td}>{r.kind}</td>
+                <td style={td}>{r.requestTypeName}</td>
                 <td style={td}>{r.status}</td>
-                <td style={td}>{r.requiresSecurityReview ? 'Yes' : 'No'}</td>
                 <td style={td}>{new Date(r.createdAt).toLocaleString()}</td>
               </tr>
             ))}

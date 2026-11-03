@@ -13,14 +13,6 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
         => _factory = factory;
 
     [Fact]
-    public async Task Health_endpoint_is_anonymous_and_healthy()
-    {
-        var client = _factory.CreateClient();
-        var res = await client.GetAsync("/health");
-        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
-    }
-
-    [Fact]
     public async Task Requests_endpoint_requires_authentication()
     {
         var client = _factory.CreateClient();

@@ -16,32 +16,39 @@ public static class Roles
     };
 }
 
-/// <summary>Lifecycle states for an access/service request (maps to the workflow).</summary>
-public enum RequestStatus
+/// <summary>Distinguishes the two confirmed request flows that share one entity (PortalRequest).</summary>
+public enum RequestKind
 {
-    Draft,
-    Submitted,
-    ManagerApproval,
-    SecurityApproval,
-    ItProcessing,
-    Provisioned,
-    AwaitingConfirmation,
-    Closed,
-    Rejected
+    Access,
+    Service
 }
 
-/// <summary>Categories of IT service / access request.</summary>
-public enum RequestCategory
+/// <summary>Shared lifecycle for both access and service requests.</summary>
+public enum RequestStatus
 {
-    GitHubAccess,
-    AzureAccess,
-    VpnAccess,
-    ApplicationAccess,
-    DatabaseAccess,
-    ProductionAccess,
-    SoftwareInstallation,
-    LaptopRequest,
-    HardwareRequest,
-    PasswordSupport,
-    GeneralSupport
+    Submitted,
+    UnderReview,
+    Approved,
+    Rejected,
+    Fulfilled
+}
+
+/// <summary>Accepted = Graph sendMail accepted the message for delivery (not proof of delivery).</summary>
+public enum NotificationStatus
+{
+    Pending,
+    Accepted,
+    NotSent,
+    Failed
+}
+
+/// <summary>Identifies which email template/content variant a notification uses.</summary>
+public enum NotificationTemplate
+{
+    RequesterSubmitted,
+    RequesterUnderReview,
+    RequesterApproved,
+    RequesterRejected,
+    RequesterFulfilled,
+    ManagerWaitingApproval
 }
