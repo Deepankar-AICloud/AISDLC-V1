@@ -91,6 +91,7 @@ jobs:
           path: |
             .sdlc/issue-${{ steps.meta.outputs.issue }}.json
             .sdlc/issue-${{ steps.meta.outputs.issue }}-*.patch
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 30
 

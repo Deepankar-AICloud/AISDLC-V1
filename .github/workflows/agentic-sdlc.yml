@@ -166,6 +166,7 @@ jobs:
           path: |
             .sdlc/issue-${{ inputs.issue_number }}.json
             .sdlc/issue-${{ inputs.issue_number }}-*.patch
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 30
 
