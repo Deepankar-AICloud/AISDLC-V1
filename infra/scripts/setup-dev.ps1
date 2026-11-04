@@ -56,7 +56,7 @@ $rgLocation = az group show -n $ResourceGroup --query location -o tsv
 Write-Host "Subscription $($account.sub), tenant $($account.tenant), RG $ResourceGroup ($rgLocation)"
 
 # ── 1. Resource providers ───────────────────────────────────────────────────
-foreach ($ns in 'Microsoft.Web', 'Microsoft.Sql', 'Microsoft.KeyVault', 'Microsoft.Storage',
+foreach ($ns in 'Microsoft.Web', 'Microsoft.Sql', 'Microsoft.KeyVault', 'Microsoft.Storage', 'Microsoft.Network',
                 'Microsoft.Insights', 'Microsoft.OperationalInsights', 'Microsoft.ManagedIdentity') {
     az provider register --namespace $ns --wait | Out-Null
 }
@@ -64,12 +64,22 @@ foreach ($ns in 'Microsoft.Web', 'Microsoft.Sql', 'Microsoft.KeyVault', 'Microso
 # ── 2. GitHub Actions deploy identity (OIDC) ────────────────────────────────
 $deployId = 'id-smartserve-github-dev'
 $identity = az identity create -g $ResourceGroup -n $deployId -l $rgLocation --query '{clientId:clientId, principalId:principalId}' -o json | ConvertFrom-Json
-$fedName = 'github-env-dev'
-if (-not (az identity federated-credential list -g $ResourceGroup --identity-name $deployId --query "[?name=='$fedName'].name" -o tsv)) {
-    az identity federated-credential create -g $ResourceGroup --identity-name $deployId -n $fedName `
-        --issuer 'https://token.actions.githubusercontent.com' `
-        --subject "repo:${Repo}:environment:$envName" `
-        --audiences 'api://AzureADTokenExchange' | Out-Null
+$owner, $repoName = $Repo -split '/'
+$ids = gh api "repos/$Repo" --jq '"\(.owner.id) \(.id)"'
+$ownerId, $repoId = $ids -split ' '
+# GitHub issues either the classic subject or the newer one that embeds owner/repo IDs.
+$subjects = @{
+    'github-env-dev'     = "repo:${Repo}:environment:$envName"
+    'github-env-dev-ids' = "repo:$owner@$ownerId/$repoName@${repoId}:environment:$envName"
+}
+$existing = az identity federated-credential list -g $ResourceGroup --identity-name $deployId --query '[].name' -o tsv
+foreach ($name in $subjects.Keys) {
+    if ($existing -notcontains $name) {
+        az identity federated-credential create -g $ResourceGroup --identity-name $deployId -n $name `
+            --issuer 'https://token.actions.githubusercontent.com' `
+            --subject $subjects[$name] `
+            --audiences 'api://AzureADTokenExchange' | Out-Null
+    }
 }
 $rgId = az group show -n $ResourceGroup --query id -o tsv
 # Bicep creates Key Vault/Storage role assignments, hence RBAC Administrator alongside Contributor.

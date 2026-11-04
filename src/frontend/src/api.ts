@@ -1,3 +1,4 @@
+import { InteractionRequiredAuthError } from '@azure/msal-browser';
 import { msalInstance, apiScope, authConfigured } from './auth';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -70,11 +71,16 @@ async function authHeader(): Promise<Record<string, string>> {
   if (!authConfigured) return {};
   const account = msalInstance.getAllAccounts()[0];
   if (!account) return {};
-  const result = await msalInstance.acquireTokenSilent({
-    scopes: [apiScope],
-    account
-  });
-  return { Authorization: `Bearer ${result.accessToken}` };
+  const request = { scopes: [apiScope], account };
+  try {
+    const result = await msalInstance.acquireTokenSilent(request);
+    return { Authorization: `Bearer ${result.accessToken}` };
+  } catch (e) {
+    if (e instanceof InteractionRequiredAuthError) {
+      await msalInstance.acquireTokenRedirect(request);
+    }
+    throw e;
+  }
 }
 
 function correlationId(): string {
