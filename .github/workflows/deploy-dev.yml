@@ -32,12 +32,17 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Provision/Update infrastructure (Bicep)
+        id: infra
         uses: azure/arm-deploy@v2
         with:
           scope: resourcegroup
           resourceGroupName: ${{ secrets.AZURE_RESOURCE_GROUP_DEV }}
           template: infra/main.bicep
-          parameters: infra/dev.parameters.json
+          parameters: >-
+            infra/dev.parameters.json
+            entraTenantId=${{ secrets.AZURE_TENANT_ID }}
+            entraClientId=${{ vars.ENTRA_API_CLIENT_ID }}
+          deploymentName: smartserve-dev
           failOnStdErr: false
 
       - name: Setup .NET
@@ -47,20 +52,25 @@ jobs:
 
       - name: Publish backend
         working-directory: src/backend
-        run: dotnet publish -c Release -o ${{ github.workspace }}/publish
+        run: dotnet publish SmartServe.Api/SmartServe.Api.csproj -c Release -o ${{ github.workspace }}/publish
 
       - name: Deploy backend to App Service
         uses: azure/webapps-deploy@v3
         with:
-          app-name: ${{ secrets.AZURE_API_APP_DEV }}
+          app-name: ${{ steps.infra.outputs.apiAppName }}
           package: ${{ github.workspace }}/publish
 
       - name: Setup Node & build frontend
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Build frontend
         working-directory: src/frontend
+        env:
+          VITE_API_BASE_URL: ${{ steps.infra.outputs.apiUrl }}
+          VITE_ENTRA_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          VITE_ENTRA_CLIENT_ID: ${{ vars.ENTRA_SPA_CLIENT_ID }}
+          VITE_API_SCOPE: api://${{ vars.ENTRA_API_CLIENT_ID }}/access_as_user
         run: |
           npm ci || npm install
           npm run build --if-present
@@ -68,12 +78,23 @@ jobs:
       - name: Deploy frontend to App Service
         uses: azure/webapps-deploy@v3
         with:
-          app-name: ${{ secrets.AZURE_WEB_APP_DEV }}
+          app-name: ${{ steps.infra.outputs.webAppName }}
           package: src/frontend/dist
 
       - name: Smoke test
+        env:
+          API: ${{ steps.infra.outputs.apiUrl }}
+          WEB: ${{ steps.infra.outputs.webUrl }}
         run: |
-          API="${{ secrets.AZURE_API_URL_DEV }}"
-          echo "Health check: $API/health"
-          curl --fail --retry 5 --retry-delay 10 "$API/health" || {
-            echo "DEV smoke test FAILED — not proceeding."; exit 1; }
+          # /health requires a bearer token (no anonymous endpoints), so 401 proves the API
+          # started, which includes applying EF migrations against Azure SQL.
+          for attempt in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$API/health" || true)
+            echo "API $API/health -> $code (attempt $attempt/30)"
+            [[ "$code" == "401" || "$code" == "200" ]] && break
+            [[ $attempt == 30 ]] && { echo "DEV smoke test FAILED — not proceeding."; exit 1; }
+            sleep 20
+          done
+          curl --fail -s -o /dev/null --retry 10 --retry-delay 15 --retry-all-errors "$WEB/" \
+            || { echo "DEV frontend not reachable — not proceeding."; exit 1; }
+          echo "DEV deployed: web $WEB, api $API"
