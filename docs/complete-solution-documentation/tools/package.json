@@ -1,0 +1,15 @@
+{
+  "name": "smartserve-solution-docs-tools",
+  "private": true,
+  "description": "Local, documentation-only toolchain for generating the SmartServe solution document (not an application dependency).",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "build:aisdlc": "node build.mjs ../../aisdlc-overview",
+    "validate": "node validate.mjs",
+    "qa": "node qa-screens.mjs"
+  },
+  "devDependencies": {
+    "@mermaid-js/mermaid-cli": "^11.4.0"
+  }
+}

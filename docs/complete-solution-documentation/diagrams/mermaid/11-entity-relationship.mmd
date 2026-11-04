@@ -1,0 +1,43 @@
+erDiagram
+  AccessRequest ||--o{ ApprovalStep : "has (cascade delete)"
+  AccessRequest ||--o{ RequestComment : "has (cascade delete)"
+  AccessRequest |o..o{ AuditEntry : "referenced by AccessRequestId (no FK navigation)"
+
+  AccessRequest {
+    guid Id PK
+    string Title "max 200"
+    string Description "max 4000"
+    string Category "enum stored as string"
+    string Status "enum stored as string, indexed"
+    string RequesterId "max 200, indexed"
+    string AssignedToId "nullable"
+    bool RequiresSecurityReview
+    datetimeoffset CreatedAt
+    datetimeoffset UpdatedAt "nullable"
+    datetimeoffset ClosedAt "nullable"
+  }
+  ApprovalStep {
+    guid Id PK
+    guid AccessRequestId FK
+    string Stage "Manager | Security | IT"
+    string DecidedById "nullable"
+    bool Approved "nullable"
+    string Notes "max 2000"
+    datetimeoffset DecidedAt "nullable"
+  }
+  RequestComment {
+    guid Id PK
+    guid AccessRequestId FK
+    string AuthorId "max 200"
+    string Body "max 4000"
+    datetimeoffset CreatedAt
+  }
+  AuditEntry {
+    long Id PK
+    guid AccessRequestId "nullable, indexed"
+    string ActorId "max 200"
+    string Action "max 100"
+    string Details "max 2000"
+    datetimeoffset Timestamp "indexed"
+    string CorrelationId "max 100"
+  }

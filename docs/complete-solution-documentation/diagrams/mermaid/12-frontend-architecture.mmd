@@ -1,0 +1,15 @@
+flowchart TB
+  classDef fe fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+  subgraph FE["src/frontend (Vite 5 · React 18 · TypeScript 5)"]
+    IDX["index.html<br/>#root"]:::fe
+    MAIN["main.tsx<br/>StrictMode + MsalProvider"]:::fe
+    APP["App.tsx<br/>form + requests table + error alert<br/>useState / useEffect"]:::fe
+    APIJS["api.ts<br/>request&lt;T&gt;(): JSON, Bearer, x-correlation-id<br/>list · get · create · decide · confirm · comment"]:::fe
+    AUTH["auth.ts<br/>PublicClientApplication, apiScope,<br/>authConfigured flag"]:::fe
+    ENV["Build-time env<br/>VITE_API_BASE_URL · VITE_ENTRA_CLIENT_ID<br/>VITE_ENTRA_TENANT_ID · VITE_API_SCOPE"]:::fe
+  end
+  IDX --> MAIN --> APP --> APIJS --> AUTH
+  ENV -.-> AUTH
+  ENV -.-> APIJS
+  DEV["Vite dev server :5173<br/>proxy /api and /health → localhost:5000"]
+  APIJS -->|"fetch"| DEV

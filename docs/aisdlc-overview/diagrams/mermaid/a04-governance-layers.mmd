@@ -1,0 +1,11 @@
+flowchart TB
+  classDef l1 fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
+  classDef l2 fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+  classDef l3 fill:#FFF4E5,stroke:#C25E00,color:#1B1B1B
+  classDef l4 fill:#F3E5F5,stroke:#6A1B9A,color:#1B1B1B
+
+  L1["Layer 1 — Input discipline<br/>Readiness gate · artifact contracts · requirement text treated as data, not instructions"]:::l1
+  L2["Layer 2 — Independent quality control<br/>Deterministic checks · scoring by a different model · configurable thresholds per stage"]:::l2
+  L3["Layer 3 — Human authority<br/>Model confirmation · PR approval per stage · mandatory production approval"]:::l3
+  L4["Layer 4 — Platform security<br/>CodeQL gate · secret scanning · DAST · OIDC to Azure · managed identity · least-privilege tokens"]:::l4
+  L1 --> L2 --> L3 --> L4

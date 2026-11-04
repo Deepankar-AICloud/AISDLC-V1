@@ -1,0 +1,37 @@
+sequenceDiagram
+  autonumber
+  actor H as Human (issue author / reviewer)
+  participant G as GitHub (Issues, Actions)
+  participant O as Orchestrator (run.py)
+  participant M as Model router
+  participant C as Copilot CLI
+  participant Q as QC evaluator
+  H->>G: Label issue sdlc:start (or comment to resume)
+  G->>G: CodeQL gate: wait for CodeQL success on main
+  G->>O: Dispatch agentic-sdlc.yml (issue, state_run_id)
+  O->>O: Restore .sdlc state, readiness gate, input contract
+  alt Required information missing
+    O-->>G: Comment questions, label sdlc:awaiting-info
+  else Ready
+    O->>M: recommend(capability)
+    alt Confirmation gate (RECOMMENDED / MANUAL)
+      M-->>G: Post model recommendation, pause
+      H->>G: /model approve | /model select
+      G->>O: Re-dispatch with confirmed model
+    end
+    loop Up to max_auto_retries + 1 attempts
+      O->>C: Prompt (trusted spec + untrusted context + previous draft/findings)
+      C-->>O: Artifact text (Code stage: edits files)
+      O->>Q: evaluate(artifact, source context)
+      Q->>C: Scoring prompt (different model where possible)
+      C-->>Q: JSON scorecard
+      Q-->>O: PASS / FAIL + findings
+    end
+    alt PASS
+      O-->>G: Commit artifact, open stage PR (sdlc:review)
+      H->>G: Approve PR review
+      G->>O: artifact-review.yml: approve, merge, dispatch next stage
+    else FAIL after retries
+      O-->>G: Fail-safe comment with findings, sdlc:awaiting-info
+    end
+  end

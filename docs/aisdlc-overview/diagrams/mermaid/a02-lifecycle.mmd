@@ -1,0 +1,28 @@
+flowchart TB
+  classDef in fill:#F3F2F1,stroke:#24292F,color:#1B1B1B
+  classDef doc fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
+  classDef build fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+  classDef run fill:#F3E5F5,stroke:#6A1B9A,color:#1B1B1B
+  classDef human fill:#FFF4E5,stroke:#C25E00,color:#1B1B1B
+
+  REQ["Business requirement<br/>(GitHub issue)"]:::in
+  subgraph D["Define & design — AI agents + human approval"]
+    direction LR
+    BRD["1 · BRD"]:::doc --> PRD["2 · PRD"]:::doc --> EP["3 · Epics &<br/>stories"]:::doc --> AR["4 · Architecture"]:::doc --> NF["5 · NFRs"]:::doc --> TK["6 · Task plan"]:::doc
+  end
+  subgraph B["Build — AI agent + automated build/test + human approval"]
+    direction LR
+    CD["7 · Code & tests<br/>(backend, frontend, IaC)"]:::build
+  end
+  subgraph R["Verify & release — deterministic pipeline"]
+    direction LR
+    CI["CI + security scans"]:::run --> DEV["DEV"]:::run --> STG["STAGING<br/>+ DAST"]:::run --> PRD2["PRODUCTION"]:::run
+  end
+  H["Human approval<br/>at every stage"]:::human
+
+  REQ --> D
+  D --> B
+  B --> R
+  H -.-> D
+  H -.-> B
+  H -.->|"incl. mandatory<br/>production approval"| R

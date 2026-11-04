@@ -1,0 +1,42 @@
+flowchart TB
+  classDef c fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
+  classDef p fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+  classDef i fill:#F3E5F5,stroke:#6A1B9A,color:#1B1B1B
+
+  subgraph APP["SmartServe application"]
+    C01["C-01 React SPA"]:::c
+    C02["C-02 MSAL auth module"]:::c
+    C03["C-03 API host & pipeline"]:::c
+    C04["C-04 AccessRequestsController"]:::c
+    C05["C-05 AuditController"]:::c
+    C06["C-06 WorkflowService"]:::c
+    C07["C-07 SmartServeDbContext"]:::c
+    C08["C-08 Health endpoint"]:::c
+    C09["C-09 Test suite (xUnit)"]:::c
+  end
+  subgraph INF["Infrastructure & delivery"]
+    I01["I-01 Bicep template"]:::i
+    I02["I-02 CI workflow"]:::i
+    I03["I-03 Security workflow"]:::i
+    I04["I-04 Deploy DEV / STAGING / PROD"]:::i
+  end
+  subgraph PLT["Agentic SDLC platform"]
+    P01["P-01 Orchestrator & state store"]:::p
+    P02["P-02 Model router"]:::p
+    P03["P-03 QC evaluator & diagnosis"]:::p
+    P04["P-04 Readiness, contracts, budget"]:::p
+    P05["P-05 LLM runner (Copilot CLI)"]:::p
+    P06["P-06 Telemetry, reporting, traceability"]:::p
+    P07["P-07 Agent definitions"]:::p
+    P08["P-08 SDLC workflows (gate, run, review, feedback)"]:::p
+  end
+  C01 --> C02
+  C01 --> C03 --> C04 & C05 & C08
+  C04 --> C06
+  C04 & C05 & C08 --> C07
+  C09 -.-> C03
+  I02 -.-> C09
+  I04 --> I01
+  P08 --> P01 --> P04 & P02 & P05 & P03 & P06
+  P05 --> P07
+  P01 -->|"writes code via PR"| APP

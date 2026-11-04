@@ -1,0 +1,31 @@
+title: "AISDLC"
+subtitle: "AI-Driven Software Development Lifecycle — From Business Requirement to Production with Governed AI Agents"
+document-type: "Solution Overview for Customers"
+output-name: "AISDLC-Solution-Overview"
+source-name: "AISDLC-Solution-Overview"
+pdf-header: "AISDLC — Solution Overview"
+version: "1.0"
+date: "2026-11-03"
+repository: "Deepankar-AICloud/AISDLC-V1"
+commit: "3e2b754 (main, 2026-11-03)"
+classification: "Customer — external"
+confidentiality: "This overview describes the AISDLC platform and its reference implementation (the SmartServe IT Service & Access Request Portal). Facts and figures come from the repository and its GitHub history. No credentials, tenant identifiers or customer data are included."
+lang: en-GB
+document-control:
+  - field: Document title
+    value: AISDLC — Solution Overview
+  - field: Document ID
+    value: AISDLC-OVW-001
+  - field: Version / status
+    value: 1.0 — Issued for customer review
+  - field: Audience
+    value: Business sponsors, IT leadership, product owners, architects, engineering and security leads
+  - field: Purpose
+    value: Explain what AISDLC is, why it is needed, how it works, how it is governed, what it delivers, and how to adopt it
+  - field: Companion document
+    value: SmartServe — Complete Application Solution Document (detailed technical reference)
+revisions:
+  - version: "1.0"
+    date: "2026-11-03"
+    author: "AISDLC team"
+    description: "First customer issue."

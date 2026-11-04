@@ -1,0 +1,15 @@
+flowchart LR
+  classDef ci fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
+  classDef sec fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+  classDef env fill:#F3E5F5,stroke:#6A1B9A,color:#1B1B1B
+  classDef gate fill:#FFF4E5,stroke:#C25E00,color:#1B1B1B
+
+  PR["Pull request to main<br/>(src/**)"] --> CI["ci.yml<br/>.NET build+test (coverage collected)<br/>React lint, build, tests"]:::ci
+  PR --> SECS["security.yml<br/>gitleaks"]:::sec
+  PR --> CQ["CodeQL default setup"]:::sec
+  CI & SECS & CQ --> MERGE["Merge to main<br/>(branch-protection rules: not confirmed from workspace)"]:::gate
+  MERGE --> DEV["deploy-dev.yml<br/>OIDC → Bicep → publish API → deploy API & web<br/>→ /health smoke"]:::env
+  DEV -->|"workflow_run success"| STG["deploy-staging.yml<br/>env 'staging' · publish API → staging slot<br/>→ /health smoke → OWASP ZAP baseline"]:::env
+  STG --> APPROVE{"Manual dispatch<br/>confirm = 'promote'<br/>+ 'production' environment reviewers"}:::gate
+  APPROVE --> PROD["deploy-production.yml<br/>staging health → slot swap → prod /health<br/>→ deployment_status → release evidence (90 d)"]:::env
+  PROD -->|"health failed"| FAIL["DEPLOYMENT_FAILED<br/>manual swap-back (no auto rollback)"]:::gate

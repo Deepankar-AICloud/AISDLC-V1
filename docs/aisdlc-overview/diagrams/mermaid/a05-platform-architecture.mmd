@@ -1,0 +1,35 @@
+flowchart TB
+  classDef gh fill:#F3F2F1,stroke:#24292F,color:#1B1B1B
+  classDef core fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
+  classDef ai fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+  classDef az fill:#F3E5F5,stroke:#6A1B9A,color:#1B1B1B
+
+  subgraph GH["GitHub — collaboration and execution"]
+    I["Issues & labels<br/>(requirement intake)"]:::gh
+    PRs["Pull requests<br/>(human approvals)"]:::gh
+    ACT["GitHub Actions<br/>(runs every stage)"]:::gh
+    SEC["CodeQL · secret scanning"]:::gh
+  end
+  subgraph CORE["AISDLC control plane (in your repository)"]
+    O["Orchestrator<br/>state machine"]:::core
+    MR["Model router"]:::core
+    QC["Quality control"]:::core
+    T["Telemetry & traceability"]:::core
+    CFG["Configuration<br/>agents · models · gates · contracts"]:::core
+  end
+  subgraph AI["AI layer"]
+    CP["GitHub Copilot<br/>(multiple models)"]:::ai
+    AG["Agent definitions<br/>BRD · PRD · Epic · Architecture · NFR · Task · Engineer"]:::ai
+  end
+  subgraph AZ["Target platform (example: Azure)"]
+    APP["App Service · Azure SQL · Key Vault<br/>Application Insights"]:::az
+  end
+  I --> ACT --> O
+  O --> MR --> CP
+  O --> AG
+  O --> QC --> CP
+  O --> T
+  CFG -.-> O
+  O --> PRs
+  SEC -.->|"gate"| O
+  ACT -->|"OIDC deploy"| APP

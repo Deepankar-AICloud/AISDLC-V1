@@ -1,0 +1,22 @@
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant B as Browser (SPA + MSAL)
+  participant E as Microsoft Entra ID
+  participant A as SmartServe.Api
+  Note over B: auth.ts builds PublicClientApplication<br/>authority login.microsoftonline.com/{tenant}<br/>cache: sessionStorage
+  U->>B: Open portal
+  B->>B: getAllAccounts()
+  alt Account already cached in session
+    B->>E: acquireTokenSilent(scope = VITE_API_SCOPE)
+    E-->>B: Access token (JWT)
+    B->>A: GET /api/requests + Authorization: Bearer
+    A->>E: Fetch signing keys / metadata (Microsoft.Identity.Web)
+    A->>A: Validate issuer, audience, signature, lifetime
+    A-->>B: 200 OK
+  else No account (sign-in UI not implemented)
+    B->>A: GET /api/requests (no Authorization header)
+    A-->>B: 401 Unauthorized
+    B-->>U: Error shown in alert box
+  end
+  Note over B,E: Gap: no loginRedirect/loginPopup call exists in src/frontend

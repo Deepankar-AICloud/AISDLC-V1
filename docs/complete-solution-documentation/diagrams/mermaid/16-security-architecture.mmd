@@ -1,0 +1,36 @@
+flowchart TB
+  classDef ctl fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+  classDef gap fill:#FDE7E9,stroke:#A4262C,stroke-dasharray:4 3,color:#1B1B1B
+  classDef z fill:#FFFFFF,stroke:#605E5C,color:#1B1B1B
+
+  subgraph Edge["Transport"]
+    T1["HTTPS only + TLS ≥1.2<br/>(App Service, SQL, Storage)"]:::ctl
+    T2["UseHttpsRedirection"]:::ctl
+  end
+  subgraph Identity["Identity & access"]
+    I1["Entra ID JWT bearer validation"]:::ctl
+    I2["Role policies (server-side)"]:::ctl
+    I3["Ownership + stage + no-self-approval checks"]:::ctl
+    I4["Managed Identity: API → Key Vault, Storage, SQL"]:::ctl
+  end
+  subgraph AppSec["Application"]
+    A1["DataAnnotations max-length validation"]:::ctl
+    A2["Security headers: nosniff, DENY, no-referrer"]:::ctl
+    A3["CORS allow-list from configuration"]:::ctl
+    A4["Audit trail with correlation id"]:::ctl
+    G1["No rate limiting · no CSP/HSTS header<br/>no global exception handler"]:::gap
+  end
+  subgraph Data["Data & secrets"]
+    D1["Key Vault (RBAC, soft delete)"]:::ctl
+    D2["Blob public access disabled"]:::ctl
+    G2["SQL public network + 0.0.0.0 'Azure services' rule<br/>SQL password admin (no Entra admin configured)"]:::gap
+  end
+  subgraph Supply["Supply chain / DevSecOps"]
+    S1["CodeQL default setup (gates Agentic SDLC)"]:::ctl
+    S2["gitleaks secret scan"]:::ctl
+    S3["OWASP ZAP baseline (staging)"]:::ctl
+    S4["OIDC to Azure (no stored cloud secrets)"]:::ctl
+    G3["Dependency scans non-blocking · no Dependabot<br/>comment-body script injection in feedback-handler.yml"]:::gap
+  end
+  Edge --> Identity --> AppSec --> Data
+  Supply -.-> AppSec

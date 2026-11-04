@@ -1,0 +1,18 @@
+flowchart LR
+  classDef pub fill:#FFF4E5,stroke:#C25E00,color:#1B1B1B
+  classDef ok fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+  NET(("Public internet"))
+  subgraph Azure["Azure (public endpoints — no VNet, no private endpoints in infra/main.bicep)"]
+    WEB["Web App<br/>*.azurewebsites.net :443"]:::pub
+    API["API App + staging slot<br/>*.azurewebsites.net :443"]:::pub
+    SQL["SQL server :1433<br/>publicNetworkAccess Enabled<br/>firewall 0.0.0.0 (Azure services)"]:::pub
+    KV["Key Vault :443 (public, RBAC)"]:::pub
+    ST["Storage :443 (public endpoint, no anonymous blobs)"]:::pub
+  end
+  NET -->|"HTTPS"| WEB
+  NET -->|"HTTPS"| API
+  API -->|"TDS over TLS"| SQL
+  API -->|"HTTPS"| KV
+  API -->|"HTTPS"| ST
+  REC["Recommended (not implemented):<br/>VNet integration, private endpoints for SQL/KV/Storage,<br/>disable public network access, Front Door/WAF"]:::ok
+  REC -.-> Azure

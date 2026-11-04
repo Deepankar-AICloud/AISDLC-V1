@@ -1,0 +1,33 @@
+flowchart TB
+  classDef gh fill:#F3F2F1,stroke:#24292F,color:#1B1B1B
+  classDef orch fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
+  classDef agent fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+  classDef gate fill:#FFF4E5,stroke:#C25E00,color:#1B1B1B
+  classDef store fill:#F3E5F5,stroke:#6A1B9A,color:#1B1B1B
+
+  ISS["GitHub issue<br/>labels: sdlc:start / sdlc:awaiting-info"]:::gh
+  GATE["agentic-sdlc-codeql-gate.yml<br/>waits for CodeQL success on main;<br/>dispatches or resumes"]:::gh
+  WF["agentic-sdlc.yml<br/>one stage per run"]:::gh
+  ORC["Orchestrator.run_stage()<br/>scripts/sdlc/orchestrator"]:::orch
+  RD["Readiness gate + input contract<br/>config/readiness.yml, contracts/*.yml"]:::gate
+  MR["Model router + confirmation gate<br/>config/models.yml"]:::gate
+  BG["Budget gate<br/>config/budgets.yml"]:::gate
+  AG["Stage agent prompt<br/>.github/agents/*.agent.md"]:::agent
+  LLM["Copilot CLI (stdin prompt)<br/>tools only for Code stage"]:::agent
+  QC["Independent QC<br/>deterministic + LLM scoring<br/>config/quality-gates.yml"]:::gate
+  DG["Diagnosis<br/>retry / ask human / escalate"]:::gate
+  PR["Stage PR (sdlc:review)<br/>human approval"]:::gh
+  AR["artifact-review.yml<br/>approve → merge → next stage"]:::gh
+  FB["feedback-handler.yml<br/>/model and /agent commands"]:::gh
+  ST[(".sdlc/issue-N.json state<br/>+ code patch artifact")]:::store
+  DOC[("docs/&lt;stage&gt;/PREFIX-N.md<br/>src/**, infra/** (Code)")]:::store
+
+  ISS --> GATE --> WF --> ORC
+  ORC --> RD --> MR --> BG --> AG --> LLM --> QC
+  QC -->|PASS| PR --> AR --> WF
+  QC -->|FAIL| DG
+  DG -->|retry| AG
+  DG -->|needs human| ISS
+  FB --> WF
+  ORC <--> ST
+  LLM --> DOC

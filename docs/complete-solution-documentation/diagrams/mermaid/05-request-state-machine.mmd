@@ -1,0 +1,17 @@
+stateDiagram-v2
+  direction LR
+  [*] --> Submitted: POST /api/requests
+  Submitted --> SecurityApproval: Manager approves (sensitive category)
+  Submitted --> ItProcessing: Manager approves (other category)
+  SecurityApproval --> ItProcessing: SecurityReviewer approves
+  ItProcessing --> Provisioned: ItAdmin approves
+  Provisioned --> Closed: requester POST /confirm
+  Submitted --> Rejected: Manager rejects
+  SecurityApproval --> Rejected: SecurityReviewer rejects
+  ItProcessing --> Rejected: ItAdmin rejects
+  Closed --> [*]
+  Rejected --> [*]
+  note right of Submitted
+    Draft, ManagerApproval and AwaitingConfirmation
+    exist in the enum but no endpoint sets them
+  end note

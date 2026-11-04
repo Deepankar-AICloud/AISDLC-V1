@@ -1,0 +1,22 @@
+flowchart TD
+  classDef ui fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+  classDef api fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
+  classDef db fill:#F3E5F5,stroke:#6A1B9A,color:#1B1B1B
+  classDef err fill:#FDE7E9,stroke:#A4262C,color:#1B1B1B
+
+  U1["1 · SPA loads; MsalProvider wraps App"]:::ui
+  U2["2 · App.refresh() → api.list()"]:::ui
+  U3["3 · authHeader(): acquireTokenSilent<br/>for VITE_API_SCOPE"]:::ui
+  A1["4 · API pipeline: HTTPS → security headers<br/>→ CORS 'spa' → JWT AuthN → AuthZ"]:::api
+  A2{"5 · Endpoint policy satisfied?"}:::api
+  A3["6 · Controller action<br/>role / ownership / stage checks"]:::api
+  D1[("7 · EF Core read/write<br/>AccessRequests, Approvals, Comments")]:::db
+  D2[("8 · AuditEntries row<br/>actor, action, correlation id")]:::db
+  R1["9 · JSON response (RequestResponse)"]:::api
+  U4["10 · Table re-rendered"]:::ui
+  E1["401 / 403 / 400 / 404<br/>surfaced in red alert box"]:::err
+
+  U1 --> U2 --> U3 --> A1 --> A2
+  A2 -- yes --> A3 --> D1 --> D2 --> R1 --> U4
+  A2 -- no --> E1
+  A3 -- "rule violated" --> E1

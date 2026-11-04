@@ -1,0 +1,29 @@
+flowchart LR
+  classDef untrusted fill:#FDE7E9,stroke:#A4262C,color:#1B1B1B
+  classDef semi fill:#FFF4E5,stroke:#C25E00,color:#1B1B1B
+  classDef trusted fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+
+  subgraph TB1["Trust boundary 1 — Internet / user device (UNTRUSTED)"]
+    BR["Browser + SPA<br/>user input, tokens in sessionStorage"]:::untrusted
+    GHU["GitHub issue / PR comment authors<br/>free text (prompt & script injection risk)"]:::untrusted
+  end
+  subgraph TB2["Trust boundary 2 — Azure App Service (PARTLY TRUSTED: authenticated callers)"]
+    API["SmartServe.Api<br/>validates JWT, roles, input"]:::semi
+  end
+  subgraph TB3["Trust boundary 3 — Azure data plane (TRUSTED, identity-gated)"]
+    SQL[("Azure SQL")]:::trusted
+    KV["Key Vault"]:::trusted
+    ST["Storage"]:::trusted
+  end
+  subgraph TB4["Trust boundary 4 — GitHub Actions runners"]
+    WF["Workflows<br/>GITHUB_TOKEN, OIDC, COPILOT_GITHUB_TOKEN"]:::semi
+    LLM["Copilot CLI agents<br/>untrusted context marked as data"]:::semi
+  end
+  IDP["Microsoft Entra ID"]:::trusted
+
+  BR -->|"HTTPS + Bearer"| API
+  BR -->|"OIDC"| IDP
+  API -->|"Managed Identity"| SQL & KV & ST
+  GHU -->|"events"| WF
+  WF --> LLM
+  WF -->|"OIDC federated credential"| API

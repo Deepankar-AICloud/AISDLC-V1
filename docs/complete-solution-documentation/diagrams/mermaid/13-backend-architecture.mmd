@@ -1,0 +1,36 @@
+flowchart TB
+  classDef mw fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
+  classDef app fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+  classDef data fill:#F3E5F5,stroke:#6A1B9A,color:#1B1B1B
+  classDef cfg fill:#FFF8E1,stroke:#C19C00,color:#1B1B1B
+
+  subgraph Startup["Program.cs — startup"]
+    K["Key Vault config provider<br/>if KeyVault:Uri set (DefaultAzureCredential)"]:::cfg
+    T["AddApplicationInsightsTelemetry"]:::cfg
+    AN["AddMicrosoftIdentityWebApi(AzureAd)"]:::cfg
+    AZ["Policies: CanCreateRequest · CanApprove<br/>CanAudit · CanAdminister"]:::cfg
+    DBC["DbContext: SQL Server or In-Memory"]:::cfg
+    MIG["Migrate() if relational<br/>EnsureCreated() otherwise"]:::cfg
+  end
+  subgraph Pipeline["Request pipeline (order)"]
+    SW["Swagger (Development only)"]:::mw
+    HR["UseHttpsRedirection"]:::mw
+    SH["Security headers<br/>nosniff · DENY · no-referrer"]:::mw
+    CO["UseCors('spa')"]:::mw
+    AU["UseAuthentication"]:::mw
+    AO["UseAuthorization"]:::mw
+  end
+  subgraph Endpoints["Endpoints"]
+    C1["AccessRequestsController<br/>api/requests"]:::app
+    C2["AuditController<br/>api/audit"]:::app
+    H["/health (anonymous)"]:::app
+  end
+  WF["WorkflowService (scoped)"]:::app
+  CTX[("SmartServeDbContext")]:::data
+
+  K --> T --> AN --> AZ --> DBC --> MIG
+  SW --> HR --> SH --> CO --> AU --> AO --> C1 & C2 & H
+  C1 --> WF
+  C1 --> CTX
+  C2 --> CTX
+  H --> CTX

@@ -1,0 +1,21 @@
+flowchart LR
+  classDef u fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+  classDef run fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
+  classDef dep fill:#F3E5F5,stroke:#6A1B9A,color:#1B1B1B
+
+  U["User browser"]:::u
+  W["Web App (production)<br/>serves built SPA (dist)"]:::run
+  P["API App — production slot<br/>(swapped in from 'staging')"]:::run
+  S["API App — 'staging' slot<br/>previous production build after swap"]:::run
+  E["Entra ID"]:::dep
+  D[("Azure SQL SmartServeDb (S1, zone-redundant)")]:::dep
+  K["Key Vault"]:::dep
+  A["App Insights → Log Analytics (90 d)"]:::dep
+
+  U -->|"1 load SPA"| W
+  U -->|"2 sign-in / token"| E
+  U -->|"3 REST + Bearer"| P
+  P --> D
+  P -.-> K
+  P -.-> A
+  S -.->|"swap back = rollback path"| P

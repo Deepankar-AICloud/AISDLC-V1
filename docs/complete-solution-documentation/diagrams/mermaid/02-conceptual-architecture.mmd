@@ -1,0 +1,18 @@
+flowchart TB
+  classDef layer fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
+  classDef ctrl fill:#FFF4E5,stroke:#C25E00,color:#1B1B1B
+  classDef ext fill:#F3F2F1,stroke:#605E5C,stroke-dasharray:4 3,color:#1B1B1B
+
+  P["Presentation<br/>Single-page portal (request form, request list)"]:::layer
+  A["Application services<br/>REST API, approval workflow, audit trail"]:::layer
+  D["Data<br/>Requests, approvals, comments, audit entries"]:::layer
+  I["Identity & access<br/>Entra ID sign-in, role-based policies"]:::ctrl
+  O["Operations<br/>Health checks, telemetry, deployment pipelines"]:::ctrl
+  E["Delivery automation<br/>Agentic SDLC: requirement → BRD → … → code"]:::ext
+
+  P --> A --> D
+  I -. secures .-> P
+  I -. secures .-> A
+  O -. observes .-> A
+  E -. produces artifacts for .-> P
+  E -. produces artifacts for .-> A

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>$title$ — $subtitle$</title>
+$for(css)$
+<link rel="stylesheet" href="$css$" />
+$endfor$
+</head>
+<body>
+
+<section class="cover">
+  <div class="cover-band"></div>
+  <div class="cover-body">
+    <p class="cover-kicker">$document-type$</p>
+    <h1 class="cover-title">$title$</h1>
+    <p class="cover-subtitle">$subtitle$</p>
+    <table class="cover-meta">
+      <tr><th>Version</th><td>$version$</td></tr>
+      <tr><th>Generated</th><td>$date$</td></tr>
+      <tr><th>Repository</th><td>$repository$</td></tr>
+      <tr><th>Source commit</th><td>$commit$</td></tr>
+      <tr><th>Classification</th><td>$classification$</td></tr>
+    </table>
+    <p class="cover-notice">$confidentiality$</p>
+  </div>
+</section>
+
+<section class="front-matter">
+  <h2 class="unnumbered-front">Document Control</h2>
+  <table>
+    <caption>Table 0.1 — Document control</caption>
+    <tbody>
+$for(document-control)$
+      <tr><th>$it.field$</th><td>$it.value$</td></tr>
+$endfor$
+    </tbody>
+  </table>
+
+  <h2 class="unnumbered-front">Revision History</h2>
+  <table>
+    <caption>Table 0.2 — Revision history</caption>
+    <thead><tr><th>Version</th><th>Date</th><th>Author</th><th>Description</th></tr></thead>
+    <tbody>
+$for(revisions)$
+      <tr><td>$it.version$</td><td>$it.date$</td><td>$it.author$</td><td>$it.description$</td></tr>
+$endfor$
+    </tbody>
+  </table>
+
+$if(status-legend)$
+  <h2 class="unnumbered-front">How to read this document</h2>
+  <p>Every statement is derived from the workspace. Status labels are used consistently:</p>
+  <ul class="legend">
+    <li><span class="badge ok">IMPLEMENTED</span> confirmed in source code or configuration</li>
+    <li><span class="badge partial">PARTIAL</span> present but incomplete or inconsistent</li>
+    <li><span class="badge planned">PLANNED</span> documented in requirements/architecture artifacts but not in code</li>
+    <li><span class="badge rec">RECOMMENDED</span> improvement proposed by this document</li>
+    <li><span class="badge nc">NOT CONFIRMED</span> cannot be confirmed from the current workspace</li>
+  </ul>
+$endif$
+</section>
+
+<nav id="TOC" class="toc" role="doc-toc">
+  <h2 class="unnumbered-front">Table of Contents</h2>
+$toc$
+</nav>
+
+<main class="content">
+$body$
+</main>
+</body>
+</html>

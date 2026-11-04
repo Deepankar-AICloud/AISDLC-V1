@@ -1,0 +1,78 @@
+/* SmartServe solution document — print-first enterprise style (Azure/GitHub inspired). */
+:root {
+  --azure: #0078D4;
+  --azure-dark: #005A9E;
+  --ink: #1B1B1B;
+  --muted: #505050;
+  --rule: #D1D1D1;
+  --zebra: #F7F9FB;
+  --code-bg: #F6F8FA;
+}
+@page { size: A4; margin: 22mm 16mm 20mm 16mm; }
+@page :first { margin: 0; }
+html { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 10.2pt; color: var(--ink); line-height: 1.45; }
+body { margin: 0; }
+h1, h2, h3, h4 { color: var(--azure-dark); line-height: 1.25; break-after: avoid; page-break-after: avoid; }
+main.content > h1, main.content section.level1 > h1 { font-size: 20pt; border-bottom: 3px solid var(--azure); padding-bottom: 4px; margin-top: 0; }
+section.level1 { break-before: page; page-break-before: always; }
+h2 { font-size: 14pt; margin-top: 18pt; border-bottom: 1px solid var(--rule); padding-bottom: 2px; }
+h3 { font-size: 11.5pt; margin-top: 14pt; }
+h4 { font-size: 10.5pt; color: var(--ink); }
+.header-section-number { color: var(--azure); margin-right: 6px; }
+p, li { orphans: 3; widows: 3; }
+a { color: var(--azure-dark); text-decoration: none; }
+code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 0.9em; background: var(--code-bg); padding: 0 3px; border-radius: 3px; overflow-wrap: anywhere; }
+pre { background: var(--code-bg); border: 1px solid var(--rule); border-left: 4px solid var(--azure); padding: 8px 10px; font-size: 8.4pt; white-space: pre-wrap; word-break: break-word; break-inside: avoid; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 8pt 0 12pt; font-size: 8.6pt; table-layout: auto; }
+th, td { border: 1px solid var(--rule); padding: 3px 5px; vertical-align: top; text-align: left; word-break: break-word; overflow-wrap: anywhere; }
+thead th { background: var(--azure); color: #FFF; }
+tbody tr:nth-child(even) { background: var(--zebra); }
+tr { break-inside: avoid; page-break-inside: avoid; }
+caption { caption-side: top; text-align: left; font-weight: 600; color: var(--muted); padding: 2px 0 4px; font-size: 8.8pt; }
+figure { margin: 10pt 0 14pt; break-inside: avoid; page-break-inside: avoid; text-align: center; }
+figure img { max-width: 100%; max-height: 205mm; height: auto; }
+figcaption { font-size: 8.8pt; color: var(--muted); font-weight: 600; margin-top: 4px; text-align: center; }
+blockquote { margin: 8pt 0; padding: 6px 10px; border-left: 4px solid #C19C00; background: #FFF8E1; color: var(--ink); }
+.badge { display: inline-block; font-size: 7.6pt; font-weight: 700; padding: 0 5px; border-radius: 3px; border: 1px solid; letter-spacing: .3px; }
+.badge.ok { color: #1E5E22; border-color: #2E7D32; background: #E8F5E9; }
+.badge.partial { color: #7A3A00; border-color: #C25E00; background: #FFF4E5; }
+.badge.planned { color: #4A1673; border-color: #6A1B9A; background: #F3E5F5; }
+.badge.rec { color: #004578; border-color: #0078D4; background: #E6F2FB; }
+.badge.nc { color: #3B3A39; border-color: #605E5C; background: #F3F2F1; }
+.badge.bad { color: #7A1A1F; border-color: #A4262C; background: #FDE7E9; }
+ul.legend { list-style: none; padding-left: 0; }
+ul.legend li { margin: 2px 0; }
+
+/* Wide tables print on landscape pages (Chromium named pages). */
+@page wide { size: A4 landscape; margin: 18mm 12mm 16mm 12mm; }
+div.landscape { page: wide; }
+div.landscape table { font-size: 7.4pt; }
+div.landscape th, div.landscape td { padding: 2px 4px; }
+
+/* Cover */
+section.cover { height: 297mm; position: relative; break-after: page; page-break-after: always; background: #FFFFFF; }
+.cover-band { height: 68mm; background: linear-gradient(120deg, #0078D4 0%, #005A9E 60%, #24292F 100%); }
+.cover-body { padding: 18mm 20mm; }
+.cover-kicker { text-transform: uppercase; letter-spacing: 2px; color: var(--azure); font-weight: 700; margin: 0 0 6mm; }
+.cover-title { font-size: 34pt; margin: 0 0 4mm; color: var(--ink); border: none; }
+.cover-subtitle { font-size: 15pt; color: var(--muted); margin: 0 0 14mm; }
+.cover-meta { width: auto; font-size: 10pt; }
+.cover-meta th { background: #F3F2F1; color: var(--ink); width: 42mm; }
+.cover-notice { position: absolute; bottom: 18mm; left: 20mm; right: 20mm; font-size: 8.6pt; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 4mm; }
+
+/* Front matter & TOC */
+section.front-matter { break-after: page; page-break-after: always; }
+nav.toc { break-after: page; page-break-after: always; }
+nav.toc ul { list-style: none; padding-left: 0; margin: 0; }
+nav.toc > ul > li { margin-top: 4px; font-weight: 600; }
+nav.toc ul ul { padding-left: 16px; font-weight: 400; font-size: 9pt; }
+nav.toc ul ul ul { display: none; }
+nav.toc a { color: var(--ink); }
+h2.unnumbered-front { border-bottom: 1px solid var(--rule); }
+
+@media screen {
+  body { max-width: 210mm; margin: 0 auto; background: #EEE; }
+  section.cover, section.front-matter, nav.toc, main.content { background: #FFF; padding: 16mm; margin-bottom: 8mm; }
+  section.cover { padding: 0; }
+}

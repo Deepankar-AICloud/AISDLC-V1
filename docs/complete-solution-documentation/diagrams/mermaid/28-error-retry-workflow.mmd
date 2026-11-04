@@ -1,0 +1,31 @@
+flowchart TD
+  classDef ok fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+  classDef warn fill:#FFF4E5,stroke:#C25E00,color:#1B1B1B
+  classDef bad fill:#FDE7E9,stroke:#A4262C,color:#1B1B1B
+
+  subgraph App["SmartServe API errors"]
+    E1["Invalid body → 400 (automatic model validation)"]:::warn
+    E2["No / invalid token → 401"]:::warn
+    E3["Role, ownership or stage violation → 403"]:::warn
+    E4["Unknown id → 404"]:::warn
+    E5["Unhandled exception → default ASP.NET Core 500<br/>(no exception handler / ProblemDetails configured)"]:::bad
+    E6["SPA: any non-2xx → message in alert box; no retry"]:::warn
+  end
+  subgraph Ops["Deployment errors"]
+    D1["Smoke test curl --retry 5/6 (10 s delay)"]:::ok
+    D2["Staging unhealthy → abort promotion"]:::ok
+    D3["Swap or prod health fails → DEPLOYMENT_FAILED<br/>manual swap-back"]:::bad
+  end
+  subgraph Sdlc["Agentic SDLC errors"]
+    S1["QC FAIL → diagnose"]:::warn
+    S2{"Cause"}:::warn
+    S3["Retry same model / escalate tier"]:::ok
+    S4["Ask human (sdlc:awaiting-info)"]:::warn
+    S5["NEEDS_HUMAN_INTERVENTION<br/>after max_auto_retries (2)"]:::bad
+    S6["Copilot model unavailable → retry with 'auto'"]:::ok
+    S7["QC reply not JSON → re-ask once → baseline 85"]:::warn
+    S1 --> S2
+    S2 -->|"validation / capability"| S3
+    S2 -->|"ambiguous requirement"| S4
+    S3 -->|"still failing"| S5
+  end

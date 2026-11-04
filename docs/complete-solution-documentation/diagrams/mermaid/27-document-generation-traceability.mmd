@@ -1,0 +1,16 @@
+flowchart LR
+  classDef art fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
+  classDef id fill:#F3F2F1,stroke:#605E5C,color:#1B1B1B
+  REQ["GitHub issue<br/>REQ"]:::id
+  BRD["docs/brd/BRD-N.md<br/>BRD-REQ-NNN"]:::art
+  PRD["docs/prd/PRD-N.md<br/>PRD-FR / PRD-NFR"]:::art
+  EPIC["docs/epic/EPIC-N.md<br/>EPIC / FEATURE / US"]:::art
+  ARCH["docs/architecture/ARCH-N.md<br/>ARCH-COMP"]:::art
+  NFR["docs/nfr/NFR-N.md<br/>NFR-NNN"]:::art
+  TASK["docs/tasks/TASK-N.md<br/>TASK / UT / FT"]:::art
+  CODE["src/**, infra/**<br/>docs/code/CODE-N.md"]:::art
+  REL["reports/&lt;run&gt;/release-evidence.*<br/>RELEASE"]:::art
+  REQ --> BRD --> PRD --> EPIC --> ARCH --> NFR --> TASK --> CODE --> REL
+  PRD -.->|"upstream for"| ARCH
+  ARCH -.->|"upstream for"| TASK
+  ARCH -.->|"upstream for"| CODE

@@ -1,0 +1,23 @@
+flowchart LR
+  classDef src fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
+  classDef sink fill:#FFF8E1,stroke:#C19C00,color:#1B1B1B
+  classDef gap fill:#FDE7E9,stroke:#A4262C,stroke-dasharray:4 3,color:#1B1B1B
+
+  API["SmartServe.Api<br/>ILogger + App Insights SDK<br/>requests, dependencies, exceptions"]:::src
+  HC["/health<br/>EF Core DbContext check"]:::src
+  AUD[("AuditEntries table<br/>business audit trail")]:::src
+  ASP["App Service health check<br/>probes /health"]:::src
+  AI["Application Insights"]:::sink
+  LAW["Log Analytics workspace"]:::sink
+  WFH["Workflow smoke tests<br/>curl /health (dev, staging, prod)"]:::src
+  EVD["Release evidence pack<br/>reports/&lt;run&gt;/release-evidence.*"]:::sink
+  SDLC["Agentic SDLC telemetry<br/>reports/&lt;run&gt;/usage.json, dashboard.json"]:::sink
+  G["Not found in workspace:<br/>alert rules, dashboards, diagnostic settings,<br/>SPA telemetry, availability tests"]:::gap
+
+  API --> AI --> LAW
+  ASP --> HC
+  WFH --> HC
+  API --> AUD
+  WFH --> EVD
+  G -.-> AI
+  RUN["Agentic SDLC orchestrator run"]:::src --> SDLC

@@ -1,0 +1,22 @@
+flowchart TB
+  classDef in fill:#F3F2F1,stroke:#24292F,color:#1B1B1B
+  classDef doc fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
+  classDef code fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+
+  subgraph S1["Define"]
+    direction LR
+    I["Issue #23<br/>SmartServe requirement"]:::in
+    B["BRD-23<br/>9 business requirements<br/>(PR #24)"]:::doc
+    P["PRD-23<br/>4 functional +<br/>5 non-functional<br/>(PR #25)"]:::doc
+    E["EPIC-23<br/>6 epics · 8 features<br/>13 stories<br/>(PR #26)"]:::doc
+    I --> B --> P --> E
+  end
+  subgraph S2["Design and build"]
+    direction LR
+    A["ARCH-23<br/>13 architecture<br/>components<br/>(PR #28)"]:::doc
+    N["NFR-23<br/>5 verifiable NFRs<br/>(PR #30)"]:::doc
+    T["TASK-23<br/>16 tasks · 16 unit<br/>3 functional tests<br/>(PR #32)"]:::doc
+    C["Code<br/>55 files · +8,531 / −513<br/>backend, frontend, IaC<br/>(PR #34)"]:::code
+    A --> N --> T --> C
+  end
+  S1 --> S2

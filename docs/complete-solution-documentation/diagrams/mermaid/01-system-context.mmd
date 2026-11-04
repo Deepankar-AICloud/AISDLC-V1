@@ -1,0 +1,25 @@
+flowchart LR
+  classDef person fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+  classDef system fill:#E6F2FB,stroke:#0078D4,stroke-width:2px,color:#1B1B1B
+  classDef ext fill:#F3F2F1,stroke:#605E5C,stroke-dasharray:4 3,color:#1B1B1B
+
+  subgraph Users["People (Microsoft Entra ID accounts)"]
+    EMP["Employee<br/>submits & tracks requests"]:::person
+    APR["Manager / SecurityReviewer / ItAdmin<br/>decide on stage"]:::person
+    ADM["AppAdmin / Auditor<br/>administer, review audit"]:::person
+  end
+
+  SS["SmartServe<br/>IT Service & Access Request Portal<br/>(React SPA + .NET 8 Web API)"]:::system
+
+  ENTRA["Microsoft Entra ID<br/>«external» identity provider"]:::ext
+  AZ["Azure platform services<br/>App Service, Azure SQL, Key Vault,<br/>Storage, App Insights"]:::ext
+  GH["GitHub<br/>repo, Actions, CodeQL, Issues/PRs"]:::ext
+  SDLC["Agentic SDLC platform<br/>(scripts/sdlc + Copilot CLI)"]:::system
+
+  EMP -->|HTTPS| SS
+  APR -->|HTTPS| SS
+  ADM -->|HTTPS| SS
+  SS -->|OIDC / JWT validation| ENTRA
+  SS -->|hosted on / uses| AZ
+  GH -->|CI/CD deploys via OIDC| AZ
+  SDLC -->|generates docs & code via PRs| GH

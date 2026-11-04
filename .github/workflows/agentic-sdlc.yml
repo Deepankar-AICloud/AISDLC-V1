@@ -278,7 +278,9 @@ jobs:
           # Reuse the SAME branch/PR per stage (iterate in place).
           git checkout -B "$BRANCH"
           git add docs reports .sdlc src infra "$ARTIFACT" 2>/dev/null || true
-          git commit -m "chore(sdlc): ${AGENT} artifact for issue #${ISSUE} [skip ci]" || echo "nothing to commit"
+          # Code must run CI on the PR and CI/deploy-dev after the squash merge.
+          SKIP_CI=" [skip ci]"; [[ "$AGENT" == "code" ]] && SKIP_CI=""
+          git commit -m "chore(sdlc): ${AGENT} artifact for issue #${ISSUE}${SKIP_CI}" || echo "nothing to commit"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push -u origin "$BRANCH" --force-with-lease
 
@@ -295,6 +297,28 @@ jobs:
               exit 1
             fi
           fi
+
+      - name: Hand off to CI/CD pipeline
+        if: steps.outcome.outputs.status == 'HANDED_OFF'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          cat > /tmp/handoff.md <<EOF
+          ## ✅ Agentic generation stages complete
+
+          All AI-generated stages (BRD → PRD → Epics → Architecture → NFR → Tasks → Code) are approved and merged. State: \`${{ steps.outcome.outputs.stage }}\`.
+
+          Verification and release continue in the deterministic CI/CD pipeline on \`main\`:
+          **CI** → **Security** → **Deploy — DEV** → **Deploy — STAGING** (DAST) → **Deploy — PRODUCTION** (mandatory approval).
+
+          No further action is needed on this issue for the orchestrator. Run \`${{ steps.outcome.outputs.run_id }}\`.
+          EOF
+          for attempt in 1 2 3; do
+            gh issue comment "${{ steps.meta.outputs.issue }}" --repo "$GITHUB_REPOSITORY" \
+              --body-file /tmp/handoff.md && break
+            [[ $attempt == 3 ]] && exit 1
+            sleep $((attempt * 15))
+          done
 
       - name: Fail-safe on needs-human / blocked
         if: steps.outcome.outputs.status == 'NEEDS_HUMAN' || steps.outcome.outputs.status == 'BLOCKED'

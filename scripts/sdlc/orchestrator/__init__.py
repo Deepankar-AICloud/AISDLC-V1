@@ -36,7 +36,7 @@ from ..quality import QCResult, evaluate
 from ..quality.diagnosis import diagnose, REQUEST_HUMAN_INFO, HUMAN as DIAG_HUMAN
 from ..telemetry import Telemetry
 from .state_store import WorkflowState, load_state, save_state
-from .states import AGENT_TO_STATE, STAGE_FLOW, STATE_TO_AGENT, State
+from .states import AGENT_TO_STATE, PIPELINE_STATES, STAGE_FLOW, STATE_TO_AGENT, State
 
 
 @dataclass
@@ -45,7 +45,7 @@ class StageOutcome:
     agent: str
     artifact_path: Optional[str]
     qc: Optional[QCResult]
-    status: str                   # GENERATED | QC_FAILED | NEEDS_HUMAN | BLOCKED | AWAITING_MODEL_CONFIRMATION
+    status: str                   # GENERATED | QC_FAILED | NEEDS_HUMAN | BLOCKED | AWAITING_MODEL_CONFIRMATION | HANDED_OFF
     retries_used: int
     next_state: Optional[str]
     human_review: str
@@ -103,6 +103,10 @@ class Orchestrator:
         else:
             gen_state = STAGE_FLOW.get(st.current_state, st.current_state)
             agent_key = STATE_TO_AGENT.get(gen_state)
+        if agent_key is None and gen_state in PIPELINE_STATES:
+            self.log.event("handed_off_to_pipeline", state=st.current_state)
+            return StageOutcome(st.current_state, "", None, None, "HANDED_OFF", 0,
+                                None, "none")
         if agent_key is None:
             self.log.event("no_agent_for_state", state=gen_state)
             return StageOutcome(gen_state, "", None, None, "BLOCKED", 0, None, "none")

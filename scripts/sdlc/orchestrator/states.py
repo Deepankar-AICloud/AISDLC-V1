@@ -97,6 +97,21 @@ STATE_TO_AGENT: dict[str, str] = {
     State.CODE_GENERATION: "code",
 }
 
+# Post-code states owned by the deterministic CI/CD workflows (ci, security,
+# deploy-dev/staging/production), not by an orchestrator agent.
+PIPELINE_STATES: frozenset[str] = frozenset({
+    State.DEV_DEPLOYMENT,
+    State.FUNCTIONAL_TESTING,
+    State.PERFORMANCE_TESTING,
+    State.STAGING_DEPLOYMENT,
+    State.SECURITY_TESTING,
+    State.RELEASE_READY,
+    State.RELEASE_APPROVAL,
+    State.PRODUCTION_DEPLOYMENT,
+    State.DEPLOYED_AND_VERIFIED,
+    State.COMPLETED,
+})
+
 # Inverse: agent key -> its generation state (used to resume a stage that was
 # paused awaiting human model confirmation).
 AGENT_TO_STATE: dict[str, str] = {agent: state for state, agent in STATE_TO_AGENT.items()}

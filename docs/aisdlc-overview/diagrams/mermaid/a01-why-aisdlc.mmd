@@ -1,0 +1,23 @@
+flowchart LR
+  classDef pain fill:#FDE7E9,stroke:#A4262C,color:#1B1B1B
+  classDef gain fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+
+  subgraph T["Traditional delivery"]
+    direction TB
+    T1["Requirements in e-mails,<br/>meetings and chat"]:::pain
+    T2["Documents written by hand,<br/>formats differ per team"]:::pain
+    T3["Hand-offs lose context<br/>between BA, architect, developer"]:::pain
+    T4["Traceability rebuilt<br/>manually for audits"]:::pain
+    T1 --> T2 --> T3 --> T4
+  end
+
+  subgraph A["AISDLC"]
+    direction TB
+    A1["One GitHub issue is the<br/>single source of the requirement"]:::gain
+    A2["Specialised AI agents draft each<br/>artifact to a standard contract"]:::gain
+    A3["Independent quality checks, then<br/>human approval at every stage"]:::gain
+    A4["Stable IDs link requirement →<br/>design → task → code → release"]:::gain
+    A1 --> A2 --> A3 --> A4
+  end
+
+  T -. "evolves into" .-> A

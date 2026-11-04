@@ -1,0 +1,22 @@
+sequenceDiagram
+  autonumber
+  actor Emp as Employee
+  participant SPA as React SPA
+  participant API as AccessRequestsController
+  participant WF as WorkflowService
+  participant DB as SmartServeDbContext (Azure SQL)
+  Emp->>SPA: Fill title, description and category, then Submit
+  SPA->>API: POST /api/requests {title, description, category}<br/>Bearer + x-correlation-id
+  API->>API: [Authorize(Policy="CanCreateRequest")]<br/>DataAnnotations validation
+  alt Validation or policy fails
+    API-->>SPA: 400 / 401 / 403
+  else Valid
+    API->>WF: RequiresSecurityReview(category)
+    WF-->>API: true for Production/Database/Azure/VPN
+    API->>DB: INSERT AccessRequest (Status=Submitted)
+    API->>DB: INSERT AuditEntry (RequestCreated, actor, correlation id)
+    API-->>SPA: 201 Created + RequestResponse
+    SPA->>API: GET /api/requests (refresh list)
+    API-->>SPA: 200 OK [RequestResponse]
+  end
+  Note over SPA,API: Gap: API serialises enums as numbers (no JsonStringEnumConverter)<br/>while the SPA sends and expects strings, so category binding and display need a fix

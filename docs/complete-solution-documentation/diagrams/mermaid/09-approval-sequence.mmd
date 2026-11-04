@@ -1,0 +1,24 @@
+sequenceDiagram
+  autonumber
+  actor Ap as Approver (Manager / SecurityReviewer / ItAdmin)
+  participant API as AccessRequestsController.Decide
+  participant WF as WorkflowService
+  participant DB as Azure SQL
+  Ap->>API: POST /api/requests/{id}/decision {approved, notes}
+  API->>API: Policy CanApprove (Manager, SecurityReviewer, ItAdmin)
+  API->>DB: Load request + Approvals
+  alt Not found
+    API-->>Ap: 404 Not Found
+  else Approver is the requester
+    API-->>Ap: 403 Forbidden (no self-approval)
+  else Request not awaiting a decision
+    API-->>Ap: 400 Bad Request
+  else Caller lacks role for current stage
+    API-->>Ap: 403 Forbidden (Manager / Security / IT stage check)
+  else Allowed
+    API->>WF: Advance(req, stage, approved)
+    WF-->>API: next status (Rejected / SecurityApproval / ItProcessing / Provisioned)
+    API->>DB: INSERT ApprovalStep, UPDATE Status and UpdatedAt
+    API->>DB: INSERT AuditEntry (Decision, stage, approved)
+    API-->>Ap: 200 OK RequestResponse
+  end

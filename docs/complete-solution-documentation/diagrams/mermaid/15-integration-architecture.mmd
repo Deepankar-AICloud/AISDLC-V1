@@ -1,0 +1,22 @@
+flowchart LR
+  classDef int fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
+  classDef ext fill:#F3F2F1,stroke:#605E5C,stroke-dasharray:4 3,color:#1B1B1B
+  classDef gap fill:#FFF4E5,stroke:#C25E00,stroke-dasharray:4 3,color:#1B1B1B
+
+  API["SmartServe.Api"]:::int
+  SPA["React SPA"]:::int
+  ENTRA["Microsoft Entra ID<br/>OIDC / OAuth 2.0 (sync, HTTPS)"]:::ext
+  SQL["Azure SQL<br/>TDS 1433, Encrypt=True (sync)"]:::ext
+  KV["Azure Key Vault<br/>config provider at startup (sync)"]:::ext
+  AI["Application Insights<br/>telemetry SDK (async batch)"]:::ext
+  BLOB["Azure Storage (Blob)<br/>provisioned + RBAC, no code usage found"]:::gap
+  MAIL["Email / notification service<br/>not implemented"]:::gap
+
+  SPA -->|"token acquisition"| ENTRA
+  SPA -->|"REST/JSON over HTTPS"| API
+  API -->|"JWT validation metadata"| ENTRA
+  API --> SQL
+  API -.-> KV
+  API -.-> AI
+  API -.->|"not wired"| BLOB
+  API -.->|"not wired"| MAIL

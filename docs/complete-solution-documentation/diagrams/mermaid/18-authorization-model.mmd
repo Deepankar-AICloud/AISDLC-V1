@@ -1,0 +1,39 @@
+flowchart LR
+  classDef role fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
+  classDef pol fill:#FFF4E5,stroke:#C25E00,color:#1B1B1B
+  classDef act fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
+
+  EMP["Employee"]:::role
+  MGR["Manager"]:::role
+  SEC["SecurityReviewer"]:::role
+  ITA["ItAdmin"]:::role
+  APA["AppAdmin"]:::role
+  AUD["Auditor"]:::role
+
+  P1["CanCreateRequest"]:::pol
+  P2["CanApprove"]:::pol
+  P3["CanAudit"]:::pol
+  P4["CanAdminister<br/>(defined, not used by any endpoint)"]:::pol
+
+  A1["Create request"]:::act
+  A2["Decide (stage-matched role)"]:::act
+  A3["Read audit trail"]:::act
+  A4["List / read all requests"]:::act
+  A5["List / read own requests only"]:::act
+
+  EMP --> P1
+  MGR --> P1
+  SEC --> P1
+  ITA --> P1
+  APA --> P1
+  MGR --> P2
+  SEC --> P2
+  ITA --> P2
+  AUD --> P3
+  APA --> P3
+  APA --> P4
+  P1 --> A1
+  P2 --> A2
+  P3 --> A3
+  MGR & SEC & ITA & APA & AUD --> A4
+  EMP --> A5
