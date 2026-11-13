@@ -128,14 +128,56 @@ jobs:
 
       - name: Fetch requirement context
         id: ctx
+        # Only comments from people with triage access or more reach the agents, so outsiders
+        # cannot add text to a requirement. Trusted bots (repository variable
+        # SDLC_TRUSTED_CONTEXT_BOTS, e.g. the AISDLC Portal app) contribute only their
+        # "[Part k/n of ...]" continuation comments.
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ steps.meta.outputs.issue }}
+          TRUSTED_CONTEXT_BOTS: ${{ vars.SDLC_TRUSTED_CONTEXT_BOTS }}
+          CONTEXT_DIR: /tmp
         run: |
-          ISSUE="${{ steps.meta.outputs.issue }}"
-          gh issue view "$ISSUE" --json title,body,comments \
-            --jq '"TITLE: \(.title)\n\nBODY:\n\(.body)\n\nHUMAN COMMENTS:\n" + ([.comments[] | select(.author.login != "github-actions" and .author.login != "github-actions[bot]" and (.body | startswith("/model ") | not) and (.body | startswith("/agent ") | not)) | .body] | join("\n---\n"))' \
-            > /tmp/context.txt || echo "No issue context available." > /tmp/context.txt
-          echo "Context captured ($(wc -l < /tmp/context.txt) lines)."
+          if ! gh issue view "$ISSUE" --json title,body,comments > "$CONTEXT_DIR/issue.json"; then
+            echo "No issue context available." > "$CONTEXT_DIR/context.txt"
+            exit 0
+          fi
+          : > "$CONTEXT_DIR/allowed-authors.txt"
+          python - <<'PY' > "$CONTEXT_DIR/authors.txt"
+          import json, os, re
+          data = json.load(open(os.path.join(os.environ["CONTEXT_DIR"], "issue.json"), encoding="utf-8"))
+          logins = {(c.get("author") or {}).get("login") or "" for c in data.get("comments", [])}
+          print("\n".join(sorted(lg for lg in logins if re.fullmatch(r"[A-Za-z0-9-]{1,39}", lg))))
+          PY
+          while IFS= read -r login; do
+            login="${login%$'\r'}"
+            [[ "$login" =~ ^[A-Za-z0-9-]{1,39}$ ]] || continue
+            ROLE="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${login}/permission" --jq .role_name 2>/dev/null || echo none)"
+            case "$ROLE" in
+              admin|maintain|write|triage) echo "$login" >> "$CONTEXT_DIR/allowed-authors.txt" ;;
+            esac
+          done < "$CONTEXT_DIR/authors.txt"
+          python - <<'PY'
+          import json, os
+          d = os.environ["CONTEXT_DIR"]
+          data = json.load(open(os.path.join(d, "issue.json"), encoding="utf-8"))
+          allowed = {ln.strip().lower() for ln in open(os.path.join(d, "allowed-authors.txt"), encoding="utf-8") if ln.strip()}
+          bots = {b.strip().lower().removesuffix("[bot]") for b in os.environ.get("TRUSTED_CONTEXT_BOTS", "").split(",") if b.strip()}
+          kept, dropped = [], 0
+          for c in data.get("comments", []):
+              login = ((c.get("author") or {}).get("login") or "").lower().removesuffix("[bot]")
+              body = c.get("body") or ""
+              if login in allowed and not body.startswith(("/model ", "/agent ")):
+                  kept.append(body)
+              elif login in bots and body.startswith("[Part "):
+                  kept.append(body)
+              else:
+                  dropped += 1
+          ctx = f"TITLE: {data.get('title', '')}\n\nBODY:\n{data.get('body', '')}\n\nHUMAN COMMENTS:\n" + "\n---\n".join(kept)
+          open(os.path.join(d, "context.txt"), "w", encoding="utf-8").write(ctx + "\n")
+          print(f"Context: kept {len(kept)} comment(s), ignored {dropped} from bots, commands or users without triage access.")
+          PY
+          echo "Context captured ($(wc -l < "$CONTEXT_DIR/context.txt") lines)."
 
       - name: Run orchestrator (advance one stage)
         id: run

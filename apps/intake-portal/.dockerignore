@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/.venv
+**/var
+**/var-test
+**/__pycache__
+**/.e2e-samples
+frontend/e2e/.samples
+frontend/playwright-report
+frontend/test-results
+**/.env
+**/*.pem
+docs

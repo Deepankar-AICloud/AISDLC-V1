@@ -1,8 +1,17 @@
 name: Agentic SDLC — Feedback Handler
 
-# Processes safe, structured /agent commands from PR review comments and issue
-# comments. Only an allowlisted command set is honored; arbitrary commands are
-# never executed (prompt-injection mitigation).
+# Processes safe, structured /agent and /model commands from PR review comments
+# and issue comments. Only an allowlisted command set is honored; arbitrary
+# commands are never executed (prompt-injection mitigation).
+#
+# Security rules for this file:
+# - Comment text is untrusted. It reaches shell only through `env:` variables,
+#   never through `${{ github.event.comment.body }}` inside `run:` scripts.
+# - Only the first line is parsed, and only validated values are written to
+#   $GITHUB_OUTPUT (a newline in an output value could forge other outputs).
+#   Free text (notes, reasons) goes through files.
+# - Only users with write, maintain or admin access may run commands (checked
+#   with the GitHub permission API; failures deny).
 
 on:
   issue_comment:
@@ -20,35 +29,85 @@ concurrency:
   group: feedback-${{ github.event.issue.number || github.event.pull_request.number }}
   cancel-in-progress: false
 
+env:
+  TARGET_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+
 jobs:
-  handle:
+  # ── Who may issue commands ────────────────────────────────────────────────
+  authorize:
     # Ignore bot comments to prevent trigger loops.
     if: >-
       github.actor != 'github-actions[bot]' &&
+      (startsWith(github.event.comment.body, '/agent ') || startsWith(github.event.comment.body, '/model '))
+    runs-on: ubuntu-latest
+    outputs:
+      allowed: ${{ steps.perm.outputs.allowed }}
+    steps:
+      - name: Check commenter has write access
+        id: perm
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+          COMMENTER_TYPE: ${{ github.event.comment.user.type }}
+        run: |
+          ALLOWED=false
+          PERM=none
+          if [[ "$COMMENTER_TYPE" == "User" && "$COMMENTER" =~ ^[A-Za-z0-9-]{1,39}$ ]]; then
+            PERM="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${COMMENTER}/permission" --jq .permission 2>/dev/null || echo none)"
+            case "$PERM" in
+              admin|maintain|write) ALLOWED=true ;;
+            esac
+          fi
+          echo "Commenter permission: ${PERM}; allowed=${ALLOWED}"
+          echo "allowed=${ALLOWED}" >> "$GITHUB_OUTPUT"
+
+      - name: Explain refusal
+        if: steps.perm.outputs.allowed != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "$TARGET_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --body "❌ AISDLC commands need write access to this repository. The command was ignored."
+
+  handle:
+    needs: authorize
+    if: >-
+      needs.authorize.outputs.allowed == 'true' &&
       startsWith(github.event.comment.body, '/agent ')
     runs-on: ubuntu-latest
     steps:
       - name: Parse & validate command (allowlist)
         id: cmd
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
-          BODY="${{ github.event.comment.body }}"
-          CMD="$(echo "$BODY" | sed -E 's#^/agent[[:space:]]+([a-zA-Z-]+).*#\1#')"
+          FIRST_LINE="$(printf '%s\n' "$COMMENT_BODY" | head -n 1 | tr -d '\r')"
+          CMD=""
+          if [[ "$FIRST_LINE" =~ ^/agent[[:space:]]+([a-z-]+)([[:space:]]|$) ]]; then
+            CMD="${BASH_REMATCH[1]}"
+          fi
           case "$CMD" in
-            revise|regenerate|rerun-qc|explain|status|impact) echo "valid=true"  >> "$GITHUB_OUTPUT" ;;
-            *)                                                 echo "valid=false" >> "$GITHUB_OUTPUT" ;;
+            revise|regenerate|rerun-qc|explain|status|impact)
+              echo "valid=true" >> "$GITHUB_OUTPUT"
+              echo "name=$CMD" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "valid=false" >> "$GITHUB_OUTPUT"
+              ;;
           esac
-          echo "name=$CMD" >> "$GITHUB_OUTPUT"
-          # Capture free-text notes after the command (treated as DATA, not instructions).
-          echo "$BODY" | sed -E 's#^/agent[[:space:]]+[a-zA-Z-]+[[:space:]]*##' > /tmp/notes.txt
+          # Free-text notes after the command (treated as DATA, not instructions).
+          # First line after the command word, plus any following lines.
+          {
+            printf '%s\n' "$FIRST_LINE" | sed -E 's#^/agent[[:space:]]+[a-z-]+[[:space:]]*##'
+            printf '%s\n' "$COMMENT_BODY" | tail -n +2
+          } > "$RUNNER_TEMP/notes.txt"
 
       - name: Reject unknown commands
         if: steps.cmd.outputs.valid == 'false'
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          NUM="${{ github.event.issue.number || github.event.pull_request.number }}"
-          gh issue comment "$NUM" --body "❌ Unknown or disallowed command. Allowed: \`/agent revise|regenerate|rerun-qc|explain|status|impact\`."
-          exit 0
+          gh issue comment "$TARGET_NUMBER" --repo "$GITHUB_REPOSITORY" --body "❌ Unknown or disallowed command. Allowed: \`/agent revise|regenerate|rerun-qc|explain|status|impact\`."
 
       - name: Checkout
         if: steps.cmd.outputs.valid == 'true'
@@ -77,46 +136,58 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          COMMAND_NAME: ${{ steps.cmd.outputs.name }}
         run: |
-          NUM="${{ github.event.issue.number || github.event.pull_request.number }}"
           python -m scripts.sdlc.feedback \
-            --target "$NUM" \
-            --command "${{ steps.cmd.outputs.name }}" \
-            --notes-file /tmp/notes.txt
+            --target "$TARGET_NUMBER" \
+            --command "$COMMAND_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.txt"
 
   # ── Model confirmation / override (separate from artifact approval) ──────
   model:
     # Handles /model approve | /model select <model> [reason] | /model compare | /model status
+    needs: authorize
     if: >-
-      github.actor != 'github-actions[bot]' &&
+      needs.authorize.outputs.allowed == 'true' &&
       startsWith(github.event.comment.body, '/model ')
     runs-on: ubuntu-latest
     steps:
       - name: Parse & validate model command (allowlist)
         id: cmd
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
-          BODY="${{ github.event.comment.body }}"
-          SUB="$(echo "$BODY" | sed -E 's#^/model[[:space:]]+([a-zA-Z-]+).*#\1#')"
+          FIRST_LINE="$(printf '%s\n' "$COMMENT_BODY" | head -n 1 | tr -d '\r')"
+          SUB=""
+          MODEL=""
+          REASON=""
+          if [[ "$FIRST_LINE" =~ ^/model[[:space:]]+([a-z]+)([[:space:]]+([^[:space:]]+))?([[:space:]]+(.*))?$ ]]; then
+            SUB="${BASH_REMATCH[1]}"
+            MODEL="${BASH_REMATCH[3]}"
+            REASON="${BASH_REMATCH[5]}"
+          fi
+          VALID=false
           case "$SUB" in
-            approve|select|compare|status) echo "valid=true"  >> "$GITHUB_OUTPUT" ;;
-            *)                              echo "valid=false" >> "$GITHUB_OUTPUT" ;;
+            approve|compare|status) VALID=true ;;
+            select)
+              # Model ids are plain identifiers; anything else is refused.
+              if [[ "$MODEL" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}$ ]]; then VALID=true; fi
+              ;;
           esac
-          echo "name=$SUB" >> "$GITHUB_OUTPUT"
-          # For `select`, capture "<model> <reason...>" as DATA (not instructions).
-          ARGS="$(echo "$BODY" | sed -E 's#^/model[[:space:]]+[a-zA-Z-]+[[:space:]]*##')"
-          MODEL="$(echo "$ARGS" | awk '{print $1}')"
-          REASON="$(echo "$ARGS" | cut -s -d' ' -f2-)"
-          echo "model=$MODEL"   >> "$GITHUB_OUTPUT"
-          echo "reason=$REASON" >> "$GITHUB_OUTPUT"
+          echo "valid=$VALID" >> "$GITHUB_OUTPUT"
+          if [[ "$VALID" == "true" ]]; then
+            echo "name=$SUB" >> "$GITHUB_OUTPUT"
+            echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+          fi
+          # The reason is free text (DATA): kept in a file, never in an output or expression.
+          printf '%s' "$REASON" > "$RUNNER_TEMP/model-reason.txt"
 
       - name: Reject unknown model command
         if: steps.cmd.outputs.valid == 'false'
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          NUM="${{ github.event.issue.number || github.event.pull_request.number }}"
-          gh issue comment "$NUM" --body "❌ Unknown model command. Allowed: \`/model approve\`, \`/model select <model> [reason]\`, \`/model compare\`, \`/model status\`."
-          exit 0
+          gh issue comment "$TARGET_NUMBER" --repo "$GITHUB_REPOSITORY" --body "❌ Unknown model command. Allowed: \`/model approve\`, \`/model select <model> [reason]\`, \`/model compare\`, \`/model status\`."
 
       - name: Checkout
         if: steps.cmd.outputs.valid == 'true'
@@ -155,9 +226,10 @@ jobs:
         if: steps.cmd.outputs.valid == 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          SUB: ${{ steps.cmd.outputs.name }}
+          MODEL: ${{ steps.cmd.outputs.model }}
         run: |
-          NUM="${{ github.event.issue.number || github.event.pull_request.number }}"
-          SUB="${{ steps.cmd.outputs.name }}"
+          NUM="$TARGET_NUMBER"
           if [ "$SUB" = "status" ] || [ "$SUB" = "compare" ]; then
             # Surface the pending recommendation back to the thread.
             REC=$(python - "$NUM" <<'PY'
@@ -174,9 +246,10 @@ jobs:
           if [ "$SUB" = "approve" ]; then
             OUT=$(python -m scripts.sdlc.model_confirm --issue "$NUM") || true
           else
+            REASON="$(cat "$RUNNER_TEMP/model-reason.txt")"
             OUT=$(python -m scripts.sdlc.model_confirm --issue "$NUM" \
-              --model "${{ steps.cmd.outputs.model }}" \
-              --reason "${{ steps.cmd.outputs.reason }}") || true
+              --model "$MODEL" \
+              --reason "$REASON") || true
           fi
           CONFIRMED=$(printf '%s' "$OUT" | python -c 'import json,sys; print(str(bool(json.load(sys.stdin).get("ok"))).lower())' 2>/dev/null || echo false)
           if [ "$CONFIRMED" != "true" ]; then

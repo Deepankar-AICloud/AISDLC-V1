@@ -1,0 +1,8 @@
+.venv/
+var/
+var-test/
+.e2e-samples/
+__pycache__/
+*.pyc
+.coverage
+.env

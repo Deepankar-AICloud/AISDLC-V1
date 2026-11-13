@@ -1,0 +1,70 @@
+[project]
+name = "aisdlc-intake-portal"
+version = "0.1.0"
+description = "AISDLC Portal: intake and review desk for the AISDLC GitHub pipeline"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "fastapi==0.162.0",
+  "uvicorn[standard]==0.54.0",
+  "pydantic==2.14.3",
+  "pydantic-settings==2.16.2",
+  "python-multipart==0.0.33",
+  "sqlalchemy==2.1.8",
+  "httpx==0.28.1",
+  "pyjwt[crypto]==2.15.1",
+  "cryptography==50.0.2",
+  "itsdangerous==2.2.0",
+  "pypdf==7.0.0",
+  "python-docx==1.2.0",
+  "python-pptx==1.0.2",
+  "openpyxl==3.1.5",
+  "beautifulsoup4==4.15.0",
+  "striprtf==0.0.35",
+  "pyyaml==6.0.3",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]==3.3.8"]
+azuresql = ["pyodbc==5.4.0"]
+ocr = ["pytesseract==0.3.13", "pillow==11.1.0"]
+dev = [
+  "pytest==9.2.0",
+  "pytest-cov==7.1.0",
+  "ruff==0.17.4",
+  "mypy==2.4.1",
+  "reportlab==5.1.0",
+  "pip-audit==2.10.1",
+  "types-PyYAML==6.0.12.20261103",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "BLE", "SIM"]
+ignore = ["S101", "B008", "SIM102"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B"]
+"app/github/fake.py" = ["S324"]
+"scripts/**" = ["S603", "S607"]
+
+[tool.mypy]
+python_version = "3.12"
+strict_optional = true
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -p no:cacheprovider"
+filterwarnings = ["ignore::DeprecationWarning:reportlab.*"]

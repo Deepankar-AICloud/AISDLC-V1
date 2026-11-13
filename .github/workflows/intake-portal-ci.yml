@@ -1,0 +1,113 @@
+name: Intake Portal CI
+
+# Builds and tests apps/intake-portal only. Uses the fake GitHub; never calls a real repository.
+on:
+  pull_request:
+    paths:
+      - "apps/intake-portal/**"
+      - ".github/workflows/intake-portal-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/intake-portal/**"
+      - ".github/workflows/intake-portal-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: intake-portal-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/intake-portal/backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned dependencies
+        run: pip install -r requirements-dev.lock
+      - name: Lint and format
+        run: |
+          ruff check app tests
+          ruff format --check app tests
+      - name: Type check
+        run: mypy app
+      - name: Tests
+        run: pytest --cov=app --cov-report=term-missing
+      - name: Dependency vulnerability scan
+        run: pip-audit -r requirements.lock --require-hashes --strict
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/intake-portal/frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/intake-portal/frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Dependency vulnerability scan (runtime dependencies)
+        run: npm audit --omit=dev --audit-level=high
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend for end-to-end tests
+        working-directory: apps/intake-portal/backend
+        run: pip install -r requirements-dev.lock
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end tests (fake GitHub)
+        env:
+          PORTAL_PYTHON: python
+        run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/intake-portal/frontend/playwright-report
+          retention-days: 7
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Secret scan (gitleaks)
+        run: |
+          docker run --rm -v "$PWD/apps/intake-portal:/scan" zricethezav/gitleaks:v8.21.2 \
+            detect --source /scan --no-git --redact --verbose --exit-code 1
+
+  container:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build image
+        run: docker build -t aisdlc-portal:ci apps/intake-portal
+      - name: Production image refuses to start without production settings
+        run: |
+          if docker run --rm aisdlc-portal:ci python -c "from app.config import Settings; Settings()"; then
+            echo "::error::Production settings validation did not fail without secrets"; exit 1
+          fi

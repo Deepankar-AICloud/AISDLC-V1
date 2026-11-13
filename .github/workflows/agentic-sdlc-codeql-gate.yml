@@ -32,6 +32,7 @@ jobs:
           CODEQL_SHA: ${{ github.event.workflow_run.head_sha }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_AUTHOR_LOGIN: ${{ github.event.comment.user.login || github.event.sender.login }}
+          COMMENT_AUTHOR_TYPE: ${{ github.event.comment.user.type || github.event.sender.type }}
           RESUME: ${{ github.event_name == 'issue_comment' || github.event.action == 'edited' }}
         run: |
           MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
@@ -44,6 +45,20 @@ jobs:
             case "$COMMENT_BODY" in
               /model*|/agent*)
                 echo "Ignoring workflow command comment."
+                exit 0
+                ;;
+            esac
+            # Only people with triage access or more may resume a run (bots never).
+            # Requesters answering questions usually have triage; outsiders and read-only users do not.
+            ROLE=none
+            if [[ "$COMMENT_AUTHOR_TYPE" == "User" && "$COMMENT_AUTHOR_LOGIN" =~ ^[A-Za-z0-9-]{1,39}$ ]]; then
+              ROLE="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${COMMENT_AUTHOR_LOGIN}/permission" \
+                --jq .role_name 2>/dev/null || echo none)"
+            fi
+            case "$ROLE" in
+              admin|maintain|write|triage) ;;
+              *)
+                echo "Not resuming: ${COMMENT_AUTHOR_LOGIN} has '${ROLE}' access (triage or higher required)."
                 exit 0
                 ;;
             esac
