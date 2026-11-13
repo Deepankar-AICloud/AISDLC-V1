@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     entra_client_secret: SecretStr = SecretStr("")
     entra_requester_role: str = "Requester"
     entra_reviewer_role: str = "Reviewer"
+    # "Sign in with GitHub" for people without a work account (off by default; Entra is the primary sign-in).
+    # Users need at least GITHUB_SIGNIN_MIN_ROLE on the repository; they become Requesters, and Reviewers
+    # when they have write access or more.
+    github_signin_enabled: bool = False
+    github_signin_min_role: Literal["read", "triage", "write", "maintain", "admin"] = "triage"
     # Dev users: "login:Role[,Role]:github_login;..." (development only)
     dev_users: str = (
         "alice:Requester:alice-gh;bob:Reviewer:bob-gh;carol:Requester,Reviewer:carol-gh;"

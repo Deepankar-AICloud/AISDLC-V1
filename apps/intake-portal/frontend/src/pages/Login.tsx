@@ -4,24 +4,37 @@ import { Alert } from "../components/ui";
 import { GitHubLogo, MicrosoftLogo } from "../components/Logos";
 
 type DevUser = { username: string; roles: string[]; github_login: string };
+type Options = { microsoft: boolean; github: boolean; dev: boolean };
 
 const ERRORS: Record<string, string> = {
   signin_failed: "Sign-in failed. Try again.",
   no_role: "Your account has no portal role. Ask an administrator to assign Requester or Reviewer.",
+  github_disabled: "GitHub sign-in is not enabled on this server.",
+  github_no_access:
+    "Your GitHub account doesn't have access to the AISDLC repository yet. Ask a repository admin to add you (triage access or more), then try again.",
+  github_linked_to_microsoft:
+    "That GitHub account is linked to a Microsoft work account. Sign in with Microsoft instead.",
 };
 
 const ACCENTS = ["red", "green", "blue", "yellow"] as const;
 
 export function LoginPage({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
+  const [options, setOptions] = useState<Options | null>(null);
   const [devUsers, setDevUsers] = useState<DevUser[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const errParam = new URLSearchParams(window.location.search).get("error");
 
   useEffect(() => {
-    api<DevUser[]>("/auth/dev-users")
-      .then(setDevUsers)
-      .catch(() => setDevUsers(null));
+    api<Options>("/auth/options")
+      .then((o) => {
+        setOptions(o);
+        if (o.dev)
+          api<DevUser[]>("/auth/dev-users")
+            .then(setDevUsers)
+            .catch(() => setDevUsers(null));
+      })
+      .catch(() => setOptions({ microsoft: true, github: false, dev: false }));
   }, []);
 
   async function devLogin(username: string) {
@@ -75,10 +88,33 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
           {errParam && <Alert kind="error">{ERRORS[errParam] ?? "Sign-in failed."}</Alert>}
           {error && <Alert kind="error">{error}</Alert>}
 
-          <a className="ms-button" href="/auth/login">
+          <a
+            className={`ms-button${options && !options.microsoft ? " is-unavailable" : ""}`}
+            href={options && !options.microsoft ? undefined : "/auth/login"}
+            aria-disabled={options ? !options.microsoft : undefined}
+          >
             <MicrosoftLogo />
             <span>Sign in with Microsoft</span>
           </a>
+          {options && !options.microsoft && (
+            <p className="login-note">Microsoft sign-in isn't configured on this server yet.</p>
+          )}
+
+          {options?.github && (
+            <>
+              <div className="login-divider" role="separator">
+                <span>New here? Use your GitHub account</span>
+              </div>
+              <a className="gh-button" href="/auth/github/login">
+                <GitHubLogo size={20} />
+                <span>Sign in with GitHub</span>
+              </a>
+              <p className="login-note">
+                For people without a work account. You need access to the AISDLC repository on GitHub; your role there
+                decides what you can do in the portal.
+              </p>
+            </>
+          )}
 
           <ol className="login-steps">
             <li>
@@ -86,8 +122,8 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
                 <MicrosoftLogo size={16} />
               </span>
               <span>
-                <strong>Sign in with your work account.</strong> Your organisation decides whether you are a Requester
-                or a Reviewer.
+                <strong>Sign in{options?.github ? " with Microsoft or GitHub" : " with your work account"}.</strong>{" "}
+                Your organisation, or your GitHub repository access, decides whether you are a Requester or a Reviewer.
               </span>
             </li>
             <li>
@@ -95,8 +131,8 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
                 <GitHubLogo size={16} />
               </span>
               <span>
-                <strong>Connect GitHub once.</strong> Answers, reviews and approvals then appear on GitHub under your
-                own name.
+                <strong>Your GitHub identity is used for every action.</strong> Answers, reviews and approvals appear on
+                GitHub under your own name.
               </span>
             </li>
           </ol>
@@ -120,8 +156,9 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
                       </span>
                       <span className="dev-text">
                         <span className="dev-name">{busy === u.username ? "Signing in…" : u.username}</span>
+                        <span className="dev-meta">{u.roles.join(", ")}</span>
                         <span className="dev-meta">
-                          {u.roles.join(", ")} · <GitHubLogo size={11} /> {u.github_login}
+                          <GitHubLogo size={11} /> {u.github_login}
                         </span>
                       </span>
                     </button>
@@ -131,7 +168,7 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
             </div>
           )}
         </section>
-        <p className="login-footer">Secured by Microsoft Entra ID · Human approval stays human</p>
+        <p className="login-footer">Secured by Microsoft Entra ID and GitHub · Human approval stays human</p>
       </main>
     </div>
   );

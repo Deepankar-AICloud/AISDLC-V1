@@ -58,6 +58,126 @@ def dev_users(c: Container) -> dict[str, dict[str, Any]]:
     return out
 
 
+ROLE_RANK = {"none": 0, "read": 1, "triage": 2, "write": 3, "maintain": 4, "admin": 5}
+GITHUB_OID_PREFIX = "github:"
+LOGIN_FLOW_COOKIE = "portal_ghlogin"
+
+
+def sign_in_kind(user: User) -> str:
+    if user.entra_oid.startswith(GITHUB_OID_PREFIX):
+        return "github"
+    if user.entra_oid.startswith("dev-"):
+        return "dev"
+    return "microsoft"
+
+
+@router.get("/auth/options")
+def auth_options(request: Request, c: Container = Depends(container)) -> dict[str, bool]:
+    """Public: which sign-in methods this server offers (for the login page)."""
+    return {
+        "microsoft": request.app.state.entra is not None,
+        "github": c.settings.github_signin_enabled,
+        "dev": c.settings.auth_mode == "dev",
+    }
+
+
+@router.get("/auth/github/login")
+def github_login(c: Container = Depends(container), sm: SessionManager = Depends(sessions)) -> Response:
+    if not c.settings.github_signin_enabled:
+        raise ApiError(404, "not_found", "GitHub sign-in is not enabled.")
+    state = secrets.token_urlsafe(24)
+    resp = RedirectResponse(c.oauth.authorize_url(state), status_code=302)
+    sm.set_flow(resp, LOGIN_FLOW_COOKIE, {"state": state, "purpose": "signin"})
+    return resp
+
+
+def github_signin_callback(
+    request: Request, code: str, state: str, db: Session, c: Container, sm: SessionManager
+) -> Response:
+    """Sign in (or register) a portal user from a verified GitHub account."""
+    resp = RedirectResponse("/", status_code=302)
+    flow = sm.pop_flow(request, resp, LOGIN_FLOW_COOKIE)
+
+    def fail(reason: str, login: str = "", detail: str = "") -> Response:
+        if login:
+            record(
+                db,
+                user=None,
+                github_login=login,
+                identity="user",
+                action="github_signin",
+                target_type="account",
+                target_ref=login,
+                outcome="rejected",
+                detail=detail or reason,
+            )
+        r = RedirectResponse(f"/login?error={reason}", status_code=302)
+        r.delete_cookie(LOGIN_FLOW_COOKIE, path="/")
+        return r
+
+    s = c.settings
+    if not s.github_signin_enabled:
+        return fail("github_disabled")
+    if (
+        not code
+        or flow is None
+        or flow.get("purpose") != "signin"
+        or not secrets.compare_digest(flow.get("state", ""), state)
+    ):
+        return fail("signin_failed")
+    try:
+        tokens = c.oauth.exchange(code)
+        me = UserGitHubClient(c.http, tokens.access_token, "", 0, c.owner, c.repo).whoami()
+    except (OAuthError, GitHubError):
+        return fail("signin_failed")
+    gh_id, gh_login = int(me["id"]), str(me["login"])
+    if me.get("type", "User") != "User":
+        return fail("github_no_access", gh_login, "not a user account")
+    try:
+        role = c.service.collaborator_role(gh_login)
+    except GitHubError:
+        return fail("signin_failed", gh_login, "repository role lookup failed")
+    if ROLE_RANK.get(role, 0) < ROLE_RANK[s.github_signin_min_role]:
+        return fail("github_no_access", gh_login, f"repository role '{role}'")
+    link = db.scalar(select(GitHubLink).where(GitHubLink.github_id == gh_id))
+    if link is not None:
+        owner = db.get(User, link.user_id)
+        if owner is not None and not owner.entra_oid.startswith(GITHUB_OID_PREFIX):
+            # Never let a GitHub account open a portal account that signs in with Microsoft.
+            return fail("github_linked_to_microsoft", gh_login, "linked to a Microsoft account")
+    is_writer = ROLE_RANK.get(role, 0) >= ROLE_RANK["write"]
+    roles = [s.entra_requester_role] + ([s.entra_reviewer_role] if is_writer else [])
+    user = upsert_user(
+        db,
+        EntraIdentity(
+            oid=f"{GITHUB_OID_PREFIX}{gh_id}",
+            name=str(me.get("name") or gh_login),
+            email=str(me.get("email") or ""),
+            roles=roles,
+        ),
+    )
+    if link is None:
+        link = GitHubLink(user_id=user.id, github_id=gh_id, github_login=gh_login)
+        db.add(link)
+    link.github_login = gh_login
+    store_tokens(c, link, tokens)
+    link.connected_at = utcnow()
+    db.commit()
+    record(
+        db,
+        user=user,
+        github_login=gh_login,
+        identity="user",
+        action="github_signin",
+        target_type="account",
+        target_ref=gh_login,
+        outcome="ok",
+        detail=f"repository role '{role}', portal roles {roles}",
+    )
+    sm.issue(resp, user.id)
+    return resp
+
+
 # ------------------------------------------------------------------ session
 @router.get("/api/me")
 def me(
@@ -71,7 +191,7 @@ def me(
     link = get_link(db, user)
     s = c.settings
     return {
-        "user": {"name": user.display_name, "email": user.email, "roles": user.roles},
+        "user": {"name": user.display_name, "email": user.email, "roles": user.roles, "sign_in": sign_in_kind(user)},
         "csrf_token": sess.get("csrf"),
         "github": {
             "connected": bool(link and not link.revoked),
@@ -207,6 +327,8 @@ def github_callback(
     c: Container = Depends(container),
     sm: SessionManager = Depends(sessions),
 ) -> Response:
+    if LOGIN_FLOW_COOKIE in request.cookies and "portal_gh" not in request.cookies:
+        return github_signin_callback(request, code, state, db, c, sm)
     resp = RedirectResponse("/account?github=connected", status_code=302)
     flow = sm.pop_flow(request, resp, "portal_gh")
     sess = sm.read(request)
@@ -283,6 +405,12 @@ def github_callback(
 
 @router.post("/api/github/disconnect")
 def github_disconnect(user: User = Depends(current_user), db: Session = Depends(db_session)) -> dict[str, str]:
+    if user.entra_oid.startswith(GITHUB_OID_PREFIX):
+        raise ApiError(
+            409,
+            "github_identity",
+            "You signed in with GitHub, so the GitHub connection is your identity. Sign out instead.",
+        )
     link = get_link(db, user)
     if link:
         login = link.github_login
@@ -320,9 +448,12 @@ def fake_authorize_page(
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Authorize (fake GitHub)</title>
 <style>body{{font-family:system-ui;max-width:32rem;margin:3rem auto;padding:0 1rem}}button{{padding:.6rem 1rem}}</style>
 </head><body><h1>Fake GitHub: authorize AISDLC Portal</h1>
-<p>Development only. Choose the GitHub account to connect.</p>
+<p>Development only. Choose the GitHub account to use, or create a new one.</p>
 <form method="post" action="/dev/fake-github/login/oauth/authorize">
 <input type="hidden" name="redirect_uri" value="{safe_redirect}"><input type="hidden" name="state"
 value="{html.escape(state)}"><label for="login">GitHub account</label>
-<select id="login" name="login">{options}</select> <button type="submit">Authorize</button></form></body></html>"""
+<select id="login" name="login">{options}</select>
+<p><label for="new_login">Or create a new GitHub account (gets triage access)</label>
+<input id="new_login" name="new_login" pattern="[A-Za-z0-9-]{{1,39}}" placeholder="new-user-gh"></p>
+<button type="submit">Authorize</button></form></body></html>"""
     return HTMLResponse(page)

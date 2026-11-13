@@ -24,7 +24,7 @@ async function signIn(browser: Browser, username: string): Promise<Page> {
 async function connectGitHub(page: Page, login: string) {
   await page.goto("/account");
   await page.getByRole("link", { name: /Connect GitHub/ }).click();
-  await page.getByLabel("GitHub account").selectOption(login);
+  await page.getByLabel("GitHub account", { exact: true }).selectOption(login);
   await page.getByRole("button", { name: "Authorize" }).click();
   await expect(page.getByText("GitHub connected.")).toBeVisible();
   await expect(page.getByText(`Connected as ${login}`)).toBeVisible();
@@ -145,4 +145,31 @@ test("an unassigned reviewer cannot see or act on the request", async ({ browser
   await page.goto(requestUrl);
   await expect(page.getByText("Request not found, or you do not have access to it.")).toBeVisible();
   await page.context().close();
+});
+
+test("a new user without a work account signs in with GitHub", async ({ browser }) => {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.goto("/");
+  await expect(page.getByText("New here? Use your GitHub account")).toBeVisible();
+  await page.getByRole("link", { name: "Sign in with GitHub" }).click();
+  await page.getByLabel(/create a new GitHub account/).fill("newbie-gh");
+  await page.getByRole("button", { name: "Authorize" }).click();
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  await expect(page.getByText(/newbie-gh · Requester · GitHub: newbie-gh/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "New requirement" })).toBeVisible();
+  await page.goto("/account");
+  await expect(page.getByText(/this connection is your identity/)).toBeVisible();
+  await ctx.close();
+});
+
+test("a GitHub user without repository access is refused with an explanation", async ({ browser }) => {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.goto("/");
+  await page.getByRole("link", { name: "Sign in with GitHub" }).click();
+  await page.getByLabel("GitHub account", { exact: true }).selectOption("mallory-gh");
+  await page.getByRole("button", { name: "Authorize" }).click();
+  await expect(page.getByText(/doesn't have access to the AISDLC repository yet/)).toBeVisible();
+  await ctx.close();
 });

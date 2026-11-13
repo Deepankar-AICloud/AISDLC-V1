@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 from urllib.parse import urlencode
 
@@ -40,9 +41,20 @@ def authorize(
 
 @router.post("/login/oauth/authorize")
 def authorize_submit(
-    login: str = Form(...), state: str = Form(...), redirect_uri: str = Form(""), c: Container = Depends(container)
+    state: str = Form(...),
+    login: str = Form(""),
+    new_login: str = Form(""),
+    redirect_uri: str = Form(""),
+    c: Container = Depends(container),
 ) -> RedirectResponse:
     fake = _fake(c)
+    new_login = new_login.strip()
+    if new_login:
+        if not re.fullmatch(r"[A-Za-z0-9-]{1,39}", new_login):
+            raise ApiError(422, "invalid_login", "GitHub logins use letters, digits and hyphens.")
+        if new_login not in fake.users:
+            fake.add_user(new_login, "triage")
+        login = new_login
     if login not in fake.users:
         raise ApiError(404, "not_found", "Unknown fake user.")
     code = fake.issue_oauth_code(login)

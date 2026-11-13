@@ -27,6 +27,7 @@ def main() -> None:
             "APP_ENV": "development",
             "AUTH_MODE": "dev",
             "GITHUB_MODE": "fake",
+            "GITHUB_SIGNIN_ENABLED": "true",
             "BIND_HOST": "127.0.0.1",
             "PUBLIC_BASE_URL": f"http://127.0.0.1:{port}",
             "DATA_DIR": str(data),

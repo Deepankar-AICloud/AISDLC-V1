@@ -141,6 +141,20 @@ settings → GitHub Apps).
 User tokens are always limited to the intersection of the App's permissions and the user's own access,
 so GitHub still enforces write access, CODEOWNERS and branch protection for every person.
 
+## Sign in with GitHub (optional)
+
+People without a Microsoft work account can sign in with GitHub when `GITHUB_SIGNIN_ENABLED=true`.
+It is off by default; Entra ID remains the primary sign-in. The flow reuses the GitHub App's OAuth
+settings (same callback URL). The rules:
+
+- The GitHub user needs at least `GITHUB_SIGNIN_MIN_ROLE` (default **triage**) on the AISDLC repository,
+  checked with the read-only service identity. Everyone else is refused with an explanation.
+- Portal roles come from that repository role: everyone is a **Requester**, and users with **write** or
+  more are also **Reviewers**. Roles are refreshed at every sign-in.
+- The GitHub account becomes the portal identity and stays connected, so it cannot be disconnected.
+- A GitHub account already linked to a Microsoft (Entra) user cannot be used to sign in to that account.
+- Sign-ins and refusals are written to the audit log (`github_signin`).
+
 ## Register the portal in Entra ID
 
 1. Entra admin center → App registrations → New registration. Single tenant. Redirect URI (Web):

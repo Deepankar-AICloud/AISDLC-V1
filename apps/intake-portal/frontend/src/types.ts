@@ -1,5 +1,5 @@
 export type Me = {
-  user: { name: string; email: string; roles: string[] };
+  user: { name: string; email: string; roles: string[]; sign_in: "microsoft" | "github" | "dev" };
   csrf_token: string;
   github: { connected: boolean; login: string | null; needs_reconnect: boolean };
   config: {

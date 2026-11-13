@@ -213,6 +213,16 @@ class ServiceGitHubClient(_GuardedClient):
             raise
         return str(data.get("permission", "none"))
 
+    def collaborator_role(self, login: str) -> str:
+        """Repository role (admin, maintain, write, triage, read or none)."""
+        try:
+            data = self._call("GET", f"{self.base}/collaborators/{login}/permission")
+        except GitHubError as exc:
+            if exc.status == 404:
+                return "none"
+            raise
+        return str(data.get("role_name") or data.get("permission") or "none")
+
     def branch_protection(self, branch: str) -> dict[str, Any] | None:
         """None = not protected. Raises GitHubError(403) if the App cannot read it."""
         try:

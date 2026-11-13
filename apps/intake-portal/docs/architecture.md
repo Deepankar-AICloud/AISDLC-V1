@@ -130,6 +130,13 @@ acting (429 or rate-limit 403), never on 5xx, so a comment or review is never po
 - Before approvals (stage and production), the portal re-checks `GET /user` and requires the id to match
   the stored one.
 
+### Optional GitHub sign-in
+
+With `GITHUB_SIGNIN_ENABLED=true`, people without a work account sign in through the same GitHub App OAuth
+flow. The portal identity is then the numeric GitHub id (`github:<id>`). The repository role decides access:
+`GITHUB_SIGNIN_MIN_ROLE` (default triage) to get in, Requester for everyone, and Reviewer for write or more.
+A GitHub account linked to an Entra user can never open that Entra account. Off by default.
+
 ## Approval pre-check
 
 For each stage PR and user, the portal checks (`app/review/precheck.py`):

@@ -52,9 +52,13 @@ export function AccountPage() {
             <p>
               Connected as <strong>{me.github.login}</strong>.
             </p>
-            <button type="button" className="secondary" onClick={disconnect}>
-              Disconnect GitHub
-            </button>
+            {me.user.sign_in === "github" ? (
+              <p className="hint">You signed in with GitHub, so this connection is your identity. Sign out to leave.</p>
+            ) : (
+              <button type="button" className="secondary" onClick={disconnect}>
+                Disconnect GitHub
+              </button>
+            )}
           </>
         ) : (
           <a className="button" href="/auth/github/connect">
