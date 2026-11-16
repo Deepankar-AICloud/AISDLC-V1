@@ -19,7 +19,8 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Skipped (not failed) until staging infrastructure and secrets exist: set repo variable STAGING_ENABLED=true.
+    if: vars.STAGING_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     environment: staging
     steps:

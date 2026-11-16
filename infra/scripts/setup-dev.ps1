@@ -128,6 +128,13 @@ if (-not $assigned) {
 $spaAppId = Get-OrCreateApp 'SmartServe Web (dev)'
 $spaObjectId = az ad app show --id $spaAppId --query id -o tsv
 
+# Pre-authorizing the SPA avoids an admin-consent prompt in tenants that restrict user consent.
+if (-not ($apiApp.api.preAuthorizedApplications | Where-Object appId -eq $spaAppId)) {
+    $apiSettings = $apiApp.api
+    $apiSettings.preAuthorizedApplications = @(@{ appId = $spaAppId; delegatedPermissionIds = @($scopeId) })
+    Invoke-Graph PATCH "https://graph.microsoft.com/v1.0/applications/$($apiApp.id)" @{ api = $apiSettings }
+}
+
 # Same naming as infra/main.bicep, evaluated by ARM without creating any resources.
 $nameTemplate = New-TemporaryFile
 @{
