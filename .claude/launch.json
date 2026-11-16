@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "intake-portal",
+      "runtimeExecutable": "apps/intake-portal/backend/.venv/Scripts/python.exe",
+      "runtimeArgs": ["apps/intake-portal/backend/scripts/e2e_server.py", "8000", "apps/intake-portal/frontend/e2e/.samples"],
+      "port": 8000,
+      "url": "http://127.0.0.1:8000"
+    }
+  ]
+}

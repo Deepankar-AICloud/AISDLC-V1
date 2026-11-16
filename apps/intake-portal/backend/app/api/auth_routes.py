@@ -54,7 +54,16 @@ def dev_users(c: Container) -> dict[str, dict[str, Any]]:
                 "username": parts[0],
                 "roles": [r for r in parts[1].split(",") if r],
                 "github_login": parts[2] if len(parts) > 2 else "",
+                "password": "",
             }
+    admin_password = c.settings.dev_admin_password.get_secret_value()
+    if admin_password:
+        out["admin"] = {
+            "username": "admin",
+            "roles": ["Requester", "Reviewer"],
+            "github_login": "admin-gh",
+            "password": admin_password,
+        }
     return out
 
 
@@ -265,6 +274,7 @@ def callback(
 # ------------------------------------------------------------------ dev bypass (development only)
 class DevLogin(BaseModel):
     username: str
+    password: str = ""
 
 
 def dev_auth_router() -> APIRouter:
@@ -272,7 +282,8 @@ def dev_auth_router() -> APIRouter:
 
     @app_router.get("/auth/dev-users")
     def list_dev_users(c: Container = Depends(container)) -> list[dict[str, Any]]:
-        return list(dev_users(c).values())
+        # One-click users only; password users sign in with the form and are never listed.
+        return [{k: v for k, v in u.items() if k != "password"} for u in dev_users(c).values() if not u["password"]]
 
     @app_router.post("/auth/dev-login")
     def dev_login(
@@ -289,6 +300,8 @@ def dev_auth_router() -> APIRouter:
         u = dev_users(c).get(body.username)
         if u is None:
             raise ApiError(404, "unknown_dev_user", "Unknown development user.")
+        if u["password"] and not secrets.compare_digest(body.password.encode(), u["password"].encode()):
+            raise ApiError(401, "bad_credentials", "Incorrect username or password.")
         user = upsert_user(
             db,
             EntraIdentity(

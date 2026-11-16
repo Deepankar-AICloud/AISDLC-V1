@@ -1,0 +1,162 @@
+name: Deploy — AISDLC Portal
+
+# Builds the AISDLC Portal container and deploys it to Azure App Service.
+#
+# Secrets live only in GitHub (Settings → Environments → intake-portal → Environment secrets).
+# This workflow copies them into the App Service application settings at deploy time, so no secret is
+# ever written in code, in the image, or in a .env file. Values are passed through env: and never echoed;
+# GitHub masks them in logs.
+#
+# Manual only (Actions → Deploy — AISDLC Portal → Run workflow). Required before the first run:
+#   Environment secrets:  PORTAL_SESSION_SECRET, PORTAL_TOKEN_ENCRYPTION_KEY, PORTAL_ENTRA_CLIENT_SECRET,
+#                         PORTAL_GITHUB_APP_PRIVATE_KEY, PORTAL_GITHUB_APP_CLIENT_SECRET,
+#                         PORTAL_GITHUB_WEBHOOK_SECRET, PORTAL_DATABASE_URL,
+#                         AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID (OIDC login)
+#   Environment variables (not secret): PORTAL_RESOURCE_GROUP, PORTAL_WEBAPP_NAME, PORTAL_ACR_NAME,
+#                         PORTAL_PUBLIC_BASE_URL, PORTAL_ENTRA_CLIENT_ID, PORTAL_GITHUB_APP_ID,
+#                         PORTAL_GITHUB_APP_SLUG, PORTAL_GITHUB_APP_CLIENT_ID,
+#                         PORTAL_GITHUB_SIGNIN_ENABLED (true/false)
+# The App Service, its container registry and the database must already exist.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write          # OIDC federated login to Azure (no long-lived Azure credentials)
+
+concurrency:
+  group: deploy-intake-portal
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: intake-portal
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required secrets and variables
+        env:
+          PORTAL_SESSION_SECRET: ${{ secrets.PORTAL_SESSION_SECRET }}
+          PORTAL_TOKEN_ENCRYPTION_KEY: ${{ secrets.PORTAL_TOKEN_ENCRYPTION_KEY }}
+          PORTAL_ENTRA_CLIENT_SECRET: ${{ secrets.PORTAL_ENTRA_CLIENT_SECRET }}
+          PORTAL_GITHUB_APP_PRIVATE_KEY: ${{ secrets.PORTAL_GITHUB_APP_PRIVATE_KEY }}
+          PORTAL_GITHUB_APP_CLIENT_SECRET: ${{ secrets.PORTAL_GITHUB_APP_CLIENT_SECRET }}
+          PORTAL_GITHUB_WEBHOOK_SECRET: ${{ secrets.PORTAL_GITHUB_WEBHOOK_SECRET }}
+          PORTAL_DATABASE_URL: ${{ secrets.PORTAL_DATABASE_URL }}
+          PORTAL_RESOURCE_GROUP: ${{ vars.PORTAL_RESOURCE_GROUP }}
+          PORTAL_WEBAPP_NAME: ${{ vars.PORTAL_WEBAPP_NAME }}
+          PORTAL_ACR_NAME: ${{ vars.PORTAL_ACR_NAME }}
+          PORTAL_PUBLIC_BASE_URL: ${{ vars.PORTAL_PUBLIC_BASE_URL }}
+          PORTAL_ENTRA_CLIENT_ID: ${{ vars.PORTAL_ENTRA_CLIENT_ID }}
+          PORTAL_GITHUB_APP_ID: ${{ vars.PORTAL_GITHUB_APP_ID }}
+          PORTAL_GITHUB_APP_CLIENT_ID: ${{ vars.PORTAL_GITHUB_APP_CLIENT_ID }}
+        run: |
+          missing=""
+          for name in PORTAL_SESSION_SECRET PORTAL_TOKEN_ENCRYPTION_KEY PORTAL_ENTRA_CLIENT_SECRET \
+                      PORTAL_GITHUB_APP_PRIVATE_KEY PORTAL_GITHUB_APP_CLIENT_SECRET PORTAL_GITHUB_WEBHOOK_SECRET \
+                      PORTAL_DATABASE_URL PORTAL_RESOURCE_GROUP PORTAL_WEBAPP_NAME PORTAL_ACR_NAME \
+                      PORTAL_PUBLIC_BASE_URL PORTAL_ENTRA_CLIENT_ID PORTAL_GITHUB_APP_ID PORTAL_GITHUB_APP_CLIENT_ID; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing secrets/variables in the intake-portal environment:$missing"
+            exit 1
+          fi
+          if [ "${#PORTAL_SESSION_SECRET}" -lt 32 ]; then
+            echo "::error::PORTAL_SESSION_SECRET must be at least 32 characters."
+            exit 1
+          fi
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push image (built in Azure Container Registry)
+        id: image
+        env:
+          ACR: ${{ vars.PORTAL_ACR_NAME }}
+        run: |
+          tag="${GITHUB_SHA::12}"
+          az acr build --registry "$ACR" --image "aisdlc-portal:$tag" apps/intake-portal
+          echo "ref=$ACR.azurecr.io/aisdlc-portal:$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Copy GitHub Secrets into App Service settings
+        env:
+          RG: ${{ vars.PORTAL_RESOURCE_GROUP }}
+          APP: ${{ vars.PORTAL_WEBAPP_NAME }}
+          PUBLIC_BASE_URL: ${{ vars.PORTAL_PUBLIC_BASE_URL }}
+          ENTRA_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ENTRA_CLIENT_ID: ${{ vars.PORTAL_ENTRA_CLIENT_ID }}
+          V_GITHUB_APP_ID: ${{ vars.PORTAL_GITHUB_APP_ID }}
+          V_GITHUB_APP_SLUG: ${{ vars.PORTAL_GITHUB_APP_SLUG }}
+          V_GITHUB_APP_CLIENT_ID: ${{ vars.PORTAL_GITHUB_APP_CLIENT_ID }}
+          V_GITHUB_SIGNIN_ENABLED: ${{ vars.PORTAL_GITHUB_SIGNIN_ENABLED || 'false' }}
+          SESSION_SECRET: ${{ secrets.PORTAL_SESSION_SECRET }}
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.PORTAL_TOKEN_ENCRYPTION_KEY }}
+          ENTRA_CLIENT_SECRET: ${{ secrets.PORTAL_ENTRA_CLIENT_SECRET }}
+          V_GITHUB_APP_PRIVATE_KEY: ${{ secrets.PORTAL_GITHUB_APP_PRIVATE_KEY }}
+          V_GITHUB_APP_CLIENT_SECRET: ${{ secrets.PORTAL_GITHUB_APP_CLIENT_SECRET }}
+          V_GITHUB_WEBHOOK_SECRET: ${{ secrets.PORTAL_GITHUB_WEBHOOK_SECRET }}
+          DATABASE_URL: ${{ secrets.PORTAL_DATABASE_URL }}
+        run: |
+          # App settings are single-line; the app turns literal "\n" back into newlines for the PEM key.
+          pem_one_line="${V_GITHUB_APP_PRIVATE_KEY//$'\r'/}"
+          pem_one_line="${pem_one_line//$'\n'/\\n}"
+          # Written to a private temp file (not the command line) so values never appear in process lists.
+          settings_file="$(mktemp)"
+          chmod 600 "$settings_file"
+          trap 'rm -f "$settings_file"' EXIT
+          jq -n \
+            --arg PUBLIC_BASE_URL "$PUBLIC_BASE_URL" \
+            --arg ENTRA_TENANT_ID "$ENTRA_TENANT_ID" \
+            --arg ENTRA_CLIENT_ID "$ENTRA_CLIENT_ID" \
+            --arg GITHUB_REPOSITORY "$GITHUB_REPOSITORY" \
+            --arg GITHUB_APP_ID "$V_GITHUB_APP_ID" \
+            --arg GITHUB_APP_SLUG "$V_GITHUB_APP_SLUG" \
+            --arg GITHUB_APP_CLIENT_ID "$V_GITHUB_APP_CLIENT_ID" \
+            --arg GITHUB_SIGNIN_ENABLED "$V_GITHUB_SIGNIN_ENABLED" \
+            --arg SESSION_SECRET "$SESSION_SECRET" \
+            --arg TOKEN_ENCRYPTION_KEY "$TOKEN_ENCRYPTION_KEY" \
+            --arg ENTRA_CLIENT_SECRET "$ENTRA_CLIENT_SECRET" \
+            --arg GITHUB_APP_PRIVATE_KEY "$pem_one_line" \
+            --arg GITHUB_APP_CLIENT_SECRET "$V_GITHUB_APP_CLIENT_SECRET" \
+            --arg GITHUB_WEBHOOK_SECRET "$V_GITHUB_WEBHOOK_SECRET" \
+            --arg DATABASE_URL "$DATABASE_URL" \
+            '{
+              APP_ENV: "production", AUTH_MODE: "entra", GITHUB_MODE: "app", WEBSITES_PORT: "8000",
+              PUBLIC_BASE_URL: $PUBLIC_BASE_URL, ENTRA_TENANT_ID: $ENTRA_TENANT_ID, ENTRA_CLIENT_ID: $ENTRA_CLIENT_ID,
+              GITHUB_REPOSITORY: $GITHUB_REPOSITORY, GITHUB_APP_ID: $GITHUB_APP_ID, GITHUB_APP_SLUG: $GITHUB_APP_SLUG,
+              GITHUB_APP_CLIENT_ID: $GITHUB_APP_CLIENT_ID, GITHUB_SIGNIN_ENABLED: $GITHUB_SIGNIN_ENABLED,
+              SESSION_SECRET: $SESSION_SECRET, TOKEN_ENCRYPTION_KEY: $TOKEN_ENCRYPTION_KEY,
+              ENTRA_CLIENT_SECRET: $ENTRA_CLIENT_SECRET, GITHUB_APP_PRIVATE_KEY: $GITHUB_APP_PRIVATE_KEY,
+              GITHUB_APP_CLIENT_SECRET: $GITHUB_APP_CLIENT_SECRET, GITHUB_WEBHOOK_SECRET: $GITHUB_WEBHOOK_SECRET,
+              DATABASE_URL: $DATABASE_URL
+            }' > "$settings_file"
+          az webapp config appsettings set --resource-group "$RG" --name "$APP" \
+            --settings "@$settings_file" --output none
+
+      - name: Deploy container
+        env:
+          RG: ${{ vars.PORTAL_RESOURCE_GROUP }}
+          APP: ${{ vars.PORTAL_WEBAPP_NAME }}
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          az webapp config container set --resource-group "$RG" --name "$APP" \
+            --container-image-name "$IMAGE" --output none
+          az webapp restart --resource-group "$RG" --name "$APP"
+
+      - name: Health check
+        env:
+          PUBLIC_BASE_URL: ${{ vars.PORTAL_PUBLIC_BASE_URL }}
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "$PUBLIC_BASE_URL/healthz" > /dev/null; then echo "Portal is healthy."; exit 0; fi
+            sleep 10
+          done
+          echo "::error::Portal did not become healthy at $PUBLIC_BASE_URL/healthz"
+          exit 1

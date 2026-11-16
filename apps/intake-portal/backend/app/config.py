@@ -21,7 +21,9 @@ class UnsafeConfigurationError(RuntimeError):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # Settings come only from environment variables. No .env file is read: in Azure the deploy workflow
+    # copies them from GitHub Secrets into App Service settings; locally, set them in your shell.
+    model_config = SettingsConfigDict(env_file=None, extra="ignore")
 
     # --- Runtime --------------------------------------------------------------
     app_env: Literal["development", "test", "production"] = "production"
@@ -47,11 +49,14 @@ class Settings(BaseSettings):
     # when they have write access or more.
     github_signin_enabled: bool = False
     github_signin_min_role: Literal["read", "triage", "write", "maintain", "admin"] = "triage"
-    # Dev users: "login:Role[,Role]:github_login;..." (development only)
+    # Dev users: "login:Role[,Role]:github_login;..." (development only).
     dev_users: str = (
         "alice:Requester:alice-gh;bob:Reviewer:bob-gh;carol:Requester,Reviewer:carol-gh;"
         "dave:Reviewer:dave-gh;erin:Reviewer:erin-gh"
     )
+    # Password for the "admin" dev user (Requester and Reviewer), entered in the username/password form.
+    # Never written in code: set DEV_ADMIN_PASSWORD in the environment. Unset means no admin user.
+    dev_admin_password: SecretStr = SecretStr("")
 
     # --- GitHub ---------------------------------------------------------------
     github_mode: Literal["app", "fake"] = "app"

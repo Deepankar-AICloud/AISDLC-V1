@@ -157,6 +157,7 @@ class FakeGitHub:
             ("carol-gh", "write"),
             ("dave-gh", "write"),
             ("erin-gh", "write"),
+            ("admin-gh", "write"),
             ("mallory-gh", "none"),
         ]:
             self.add_user(login, perm)

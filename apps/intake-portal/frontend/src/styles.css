@@ -163,6 +163,7 @@ label {
   margin: 0.15rem 0 0.5rem;
 }
 input[type="text"],
+input[type="password"],
 input:not([type]),
 textarea,
 select {
@@ -874,4 +875,19 @@ dialog::backdrop {
   .gh-button {
     transition: none;
   }
+}
+
+.dev-password-form label {
+  display: block;
+  margin: 0.6rem 0 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.dev-password-form input {
+  margin-top: 0.25rem;
+  font-weight: normal;
+}
+.dev-password-form button[type="submit"] {
+  margin-top: 0.9rem;
+  width: 100%;
 }

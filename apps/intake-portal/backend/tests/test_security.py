@@ -215,3 +215,30 @@ def test_entra_authorize_uses_pkce_and_state():
     e = EntraClient("tenant-1", "client-1", "secret", "https://p/auth/callback", jwks_client=object())
     url, flow = e.start()
     assert "code_challenge_method=S256" in url and f"state={flow['state']}" in url and flow["verifier"]
+
+
+# ------------------------------------------------------------------ admin dev user (password from the environment)
+def test_admin_dev_user_absent_without_password(portal):
+    c = TestClient(portal.app)
+    assert "admin" not in [u["username"] for u in c.get("/auth/dev-users").json()]
+    assert c.post("/auth/dev-login", json={"username": "admin", "password": "admin"}).status_code == 404
+
+
+def test_admin_dev_user_needs_configured_password(portal_factory):
+    p = portal_factory(dev_admin_password="s3cret-from-env")
+    c = TestClient(p.app)
+    listed = c.get("/auth/dev-users").json()
+    assert "admin" not in [u["username"] for u in listed]  # never one-click
+    assert all("password" not in u for u in listed)
+    assert c.post("/auth/dev-login", json={"username": "admin"}).status_code == 401
+    assert c.post("/auth/dev-login", json={"username": "admin", "password": "admin"}).status_code == 401
+    r = c.post("/auth/dev-login", json={"username": "admin", "password": "s3cret-from-env"})
+    assert r.status_code == 200
+    assert "s3cret-from-env" not in r.text
+
+
+def test_settings_ignore_dotenv_file(tmp_path, monkeypatch):
+    (tmp_path / ".env").write_text("SESSION_SECRET=from-dotenv-file-should-be-ignored\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SESSION_SECRET", raising=False)
+    assert Settings(app_env="test").session_secret.get_secret_value() == ""

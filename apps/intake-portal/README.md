@@ -31,7 +31,8 @@ approvals, production gate). Nothing touches a real repository.
 cd apps/intake-portal/backend
 python -m venv .venv && . .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.lock
-cp ../.env.example .env                              # defaults: APP_ENV=development, AUTH_MODE=dev, GITHUB_MODE=fake
+export APP_ENV=development AUTH_MODE=dev GITHUB_MODE=fake BIND_HOST=127.0.0.1   # no .env file is read
+export DEV_ADMIN_PASSWORD='choose-one'              # optional: enables the "admin" username/password sign-in
 uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000 --reload
 ```
 
@@ -40,6 +41,8 @@ cd apps/intake-portal/frontend
 npm ci
 npm run dev                                          # http://127.0.0.1:5173 (proxies /api and /auth to :8000)
 ```
+
+Settings come only from environment variables (see [`.env.example`](.env.example) for the full list).
 
 Sign in as a development user (alice = Requester, bob = Reviewer and code owner, erin = production
 reviewer), then use **Account → Connect GitHub** and pick the matching fake GitHub account.
@@ -166,6 +169,15 @@ settings (same callback URL). The rules:
    enough. No API permissions beyond `openid profile email`.
 5. Set `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET`. Users without either role are
    refused at sign-in.
+
+## Secrets: GitHub Secrets, never files
+
+The portal never reads a `.env` file and no secret is written in the code. For Azure, store secrets as
+**environment secrets** in GitHub (Settings → Environments → `intake-portal`) and run
+[`deploy-intake-portal.yml`](../../.github/workflows/deploy-intake-portal.yml). It checks they are all
+present, then copies them into App Service settings. The workflow header lists every secret and variable it needs.
+GitHub Secrets can only be read by workflows, so a portal running on your own machine cannot use them: set
+the values you need in your shell instead.
 
 ## Environment variables
 

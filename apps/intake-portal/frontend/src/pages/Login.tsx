@@ -37,10 +37,14 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
       .catch(() => setOptions({ microsoft: true, github: false, dev: false }));
   }, []);
 
-  async function devLogin(username: string) {
+  const [formUser, setFormUser] = useState("");
+  const [formPass, setFormPass] = useState("");
+
+  async function devLogin(username: string, password = "") {
     setBusy(username);
+    setError("");
     try {
-      const r = await api<{ csrf_token: string }>("/auth/dev-login", { json: { username } });
+      const r = await api<{ csrf_token: string }>("/auth/dev-login", { json: { username, password } });
       setCsrf(r.csrf_token);
       window.history.replaceState(null, "", "/");
       await onSignedIn();
@@ -166,6 +170,41 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
                 ))}
               </ul>
             </div>
+          )}
+
+          {options?.dev && (
+            <form
+              className="dev-panel dev-password-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void devLogin(formUser.trim(), formPass);
+              }}
+            >
+              <h2>Sign in with username and password</h2>
+              <p className="hint">For people without a GitHub or Microsoft account. Development mode only.</p>
+              <label>
+                Username
+                <input
+                  autoComplete="username"
+                  value={formUser}
+                  onChange={(e) => setFormUser(e.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={formPass}
+                  onChange={(e) => setFormPass(e.target.value)}
+                  required
+                />
+              </label>
+              <button type="submit" disabled={busy !== ""}>
+                {busy && busy === formUser.trim() ? "Signing in…" : "Sign in"}
+              </button>
+            </form>
           )}
         </section>
         <p className="login-footer">Secured by Microsoft Entra ID and GitHub · Human approval stays human</p>
