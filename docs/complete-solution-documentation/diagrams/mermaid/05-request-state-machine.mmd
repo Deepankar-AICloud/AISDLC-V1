@@ -1,17 +1,14 @@
 stateDiagram-v2
   direction LR
   [*] --> Submitted: POST /api/requests
-  Submitted --> SecurityApproval: Manager approves (sensitive category)
-  Submitted --> ItProcessing: Manager approves (other category)
-  SecurityApproval --> ItProcessing: SecurityReviewer approves
-  ItProcessing --> Provisioned: ItAdmin approves
-  Provisioned --> Closed: requester POST /confirm
-  Submitted --> Rejected: Manager rejects
-  SecurityApproval --> Rejected: SecurityReviewer rejects
-  ItProcessing --> Rejected: ItAdmin rejects
-  Closed --> [*]
+  Submitted --> UnderReview: Access request and manager resolved (on submit or retry-routing)
+  UnderReview --> Approved: Manager approves
+  UnderReview --> Rejected: Manager rejects
+  Approved --> Fulfilled: ItAdmin fulfils
+  Fulfilled --> [*]
   Rejected --> [*]
   note right of Submitted
-    Draft, ManagerApproval and AwaitingConfirmation
-    exist in the enum but no endpoint sets them
+    Service requests stay Submitted (open question).
+    Access requests stay Submitted when the manager
+    cannot be resolved, until IT retries routing.
   end note

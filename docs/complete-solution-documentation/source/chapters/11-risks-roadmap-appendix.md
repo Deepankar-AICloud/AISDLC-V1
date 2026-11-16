@@ -9,71 +9,92 @@ Probability and impact use a High/Medium/Low scale. Owners are **not confirmed f
 | ID | Risk | Category | Evidence | Affected | P | I | Rating | Mitigation | Suggested owner |
 |---|---|---|---|---|---|---|---|---|---|
 | R-01 | Shell injection through comment body in workflow scripts | Security / supply chain | `feedback-handler.yml` L34, L98; `automate_pr.yml` L43 | GitHub repo, runners | High | High | **Critical** | Pass via `env:`; restrict to members; least-privilege permissions | Platform + Security |
-| R-02 | SPA has no interactive sign-in, so users cannot obtain tokens | Functional / security | No `loginRedirect`/`loginPopup` in `src/frontend` | C-01, C-02 | High | High | High | Add MSAL sign-in (redirect) and `MsalAuthenticationTemplate` | Frontend |
-| R-03 | Enum JSON contract mismatch breaks create and list | Functional | No `JsonStringEnumConverter`; `api.ts` uses strings | API, SPA | High | High | High | Add converter + contract test | Backend |
-| R-04 | No EF migrations, so Azure SQL schema never created | Deployment | No `Migrations/`; `Migrate()` in `Program.cs` L68 | API, SQL | High | High | High | Commit migrations; apply in pipeline | Backend |
-| R-05 | API managed identity has no SQL login; SQL password admin enabled; no Entra admin | Security / deployment | `main.bicep` SQL server properties | SQL | High | High | High | Entra admin, MI users, Entra-only auth | Platform |
-| R-06 | Staging-slot identity lacks Key Vault role but has `KeyVault__Uri` | Deployment | `main.bicep` role assignments (API only) | Staging slot | Medium | High | High (requires validation) | Grant the slot MI Key Vault Secrets User | Platform |
-| R-07 | Web app not deployed to staging/production; `VITE_*` and CORS origins not configured | Deployment | `deploy-staging.yml`, `deploy-production.yml`, `main.bicep` | Web, API | High | Medium | High | Deploy web per environment; set build variables and `Cors__AllowedOrigins` | Platform |
-| R-08 | Public network access to SQL with AllowAzureServices rule; no private networking | Security | `main.bicep` | SQL, KV, Storage | Medium | High | High | Private endpoints, VNet integration, disable public access | Platform + Security |
-| R-09 | `/health` anonymous contradicts NFR-001 | Compliance | `Program.cs` L95; NFR-23 | API | Medium | Low | Medium | Decide: keep anonymous minimal liveness or secure it; update NFR | Architect |
-| R-10 | Notifications, request-type management and service-request workflow not implemented | Functional | No code; ARCH-23, TASK-010/011/012/015 | API, SPA | High | Medium | Medium | Implement per task plan | Product + Backend |
-| R-11 | Dependency and coverage gates non-blocking; no Dependabot | Supply chain / quality | `ci.yml` `continue-on-error`, unused `COVERAGE_THRESHOLD` | CI | Medium | Medium | Medium | Make blocking; add Dependabot | Platform |
-| R-12 | Broad read access for all non-employee roles; no manager scoping | Security / privacy | `List()`, `OnlyEmployee()` | API | Medium | Medium | Medium | Confirm requirements; scope queries | Architect + Backend |
-| R-13 | Audit incomplete (no old/new status, separate save, 500 cap) | Compliance | `AuditAsync`, `AuditController` | Audit | Medium | Medium | Medium | Transactional audit with old/new status; paging | Backend |
-| R-14 | No rate limiting, HSTS or CSP; no global exception handler | Security | `Program.cs` | API, Web | Medium | Medium | Medium | Rate limiter, headers, ProblemDetails | Backend |
-| R-15 | AI Code agent runs with `--allow-all-tools` on CI runner; code QC gate lowered to 60 | AI governance | `common/llm.py`, `quality-gates.yml` (`7f25d07`) | SDLC | Medium | Medium | Medium | Keep human code review mandatory; restore stricter gate when stable; per-tool allowlist | Platform |
-| R-16 | No automatic rollback; frontend has no slot | Operations | `deploy-production.yml` | Production | Low | Medium | Low | Documented swap-back; optional auto swap-back | Release manager |
-| R-17 | RPO/RTO, retention and performance targets undefined | Operations / compliance | NFR-23 open questions | All | Medium | Medium | Medium | Obtain targets; configure backup/LTR | Product owner |
-| R-18 | Legacy assets (`deploy.yml`, `copilot-setup-steps.yaml` reference absent Flask files) and `AZURE_CREDENTIALS` SP JSON in auxiliary workflows | Maintainability / security | Workflow files | Repo | Low | Low | Low | Remove or migrate to OIDC | Platform |
+| R-02 | Graph application permissions not granted and sender mailbox not set in DEV, so manager routing and e-mail fail | Functional / operations | `Graph__SenderUserId` empty; no Graph app-role assignment for the API identity | Routing, notifications | High | High | High | Entra admin grants directory read + `Mail.Send`; set `graphSenderUserId` | Identity team |
+| R-03 | Staging and production not set up; their workflows lack Bicep, web deployment and a 401-aware health check | Deployment | `deploy-staging.yml`, `deploy-production.yml`; `STAGING_ENABLED` unset | Release path | High | Medium | High | Decide design (§34 Q3); extend the workflows like DEV | Platform |
+| R-04 | API identity is the SQL server's Entra admin (needed for startup migrations) and will also hold Graph application permissions | Security | `main.bicep` SQL administrators | SQL, Graph | Medium | High | High | Run migrations from the pipeline with a separate identity; give the runtime identity a contained user with least rights | Platform + Backend |
+| R-05 | Any Manager can decide any routed access request; no check against the routed `ManagerId` or self-approval; decision notes not stored | Security / compliance | `WorkflowService.DecideAsync` | Approvals | Medium | Medium | Medium | Check `ManagerId == caller`; persist notes | Backend |
+| R-06 | App Service health probe receives 401 from `/health` | Operations | `healthCheckPath: /health`, `RequireAuthorization()` | API availability | Medium | Medium | Medium | Decide an anonymous liveness path vs NFR-001 (§34 Q4) | Architect |
+| R-07 | No approver, IT, auditor or security-review screens in the SPA | Functional | `App.tsx` | Users | High | Medium | Medium | Build screens on the existing `api.ts` calls | Frontend |
+| R-08 | Service-request workflow beyond submission undefined | Functional | `WorkflowService.SubmitAsync` *(open question)* | Service requests | Medium | Medium | Medium | Obtain the business decision | Product owner |
+| R-09 | Tenant consent policy may block sign-in in other tenants | Identity | DEV required SPA pre-authorization | Sign-in | Low | Medium | Low | Keep pre-authorization; document admin consent | Identity team |
+| R-10 | Dependency, coverage and frontend-test gates non-blocking; no Dependabot | Supply chain / quality | `ci.yml` `continue-on-error`, test echo fallback | CI | Medium | Medium | Medium | Make blocking; add Dependabot | Platform |
+| R-11 | No rate limiting, HSTS or CSP; no global exception handler | Security | `Program.cs` | API, Web | Medium | Medium | Medium | Rate limiter, headers, ProblemDetails | Backend |
+| R-12 | AI Code agent runs with `--allow-all-tools` on CI runner; code QC gate lowered to 60 | AI governance | `common/llm.py`, `quality-gates.yml` (`7f25d07`) | SDLC | Medium | Medium | Medium | Keep human code review mandatory; restore stricter gate when stable; per-tool allowlist | Platform |
+| R-13 | No alerting on failures (5xx, *Failed* notifications) | Operations | No alert rules in Bicep | All | Medium | Medium | Medium | Alerts and availability tests | Platform |
+| R-14 | RPO/RTO, retention and performance targets undefined | Operations / compliance | NFR-23 open questions | All | Medium | Medium | Medium | Obtain targets; configure backup/LTR | Product owner |
+| R-15 | Legacy assets (`deploy.yml`, `copilot-setup-steps.yaml` reference absent Flask files) and `AZURE_CREDENTIALS` SP JSON in auxiliary workflows | Maintainability / security | Workflow files | Repo | Low | Low | Low | Remove or migrate to OIDC | Platform |
 
 Table: Table 30.1 — Risk register
 
 :::
 
+## Resolved since version 1.0
+
+| Version 1.0 finding | Resolution | Evidence |
+|---|---|---|
+| SPA had no interactive sign-in | Redirect sign-in gate and interactive token fallback | `main.tsx`, `api.ts` (`6429a22`) |
+| Enum JSON contract mismatch | `JsonStringEnumConverter` + contract tests | `Program.cs`, `EnumJsonSerializationTests`, `apiFixture.test.ts` |
+| No EF migrations | Initial migration committed and applied at startup; verified in DEV | `Migrations/20261103093414_InitialPortalRequestModel.cs` |
+| SQL managed-identity login not provisioned; SQL password admin | Entra-only SQL with the user-assigned identity as admin; no password anywhere | `main.bicep` |
+| Staging-slot identity lacked Key Vault role | Slot shares the user-assigned identity, which holds the role | `main.bicep` |
+| Public SQL endpoint with `AllowAzureServices` rule | VNet integration, private endpoints and private DNS; public access disabled | `main.bicep` |
+| CORS and `VITE_*` not configured for deployed origins | Bicep sets `Cors__AllowedOrigins__0`; the DEV pipeline sets `VITE_*` | `main.bicep`, `deploy-dev.yml` |
+| `/health` anonymous (contradicted NFR-001) | `/health` requires authorization | `Program.cs` |
+| Audit without old/new status, saved separately | `RequestAudit` with old/new status in the same `SaveChanges` | `WorkflowService` |
+| Broad read access for non-employee roles | Own-request reads only; read-all limited to Auditor/AppAdmin | `RequestsController`, `AuditController` |
+| Notifications, request types not implemented | Implemented with outcome tracking and admin UI | `Services/`, `RequestTypesController`, `AdminRequestTypesPage.tsx` |
+| No frontend tests; 16 backend tests | 5 frontend tests; 32 backend test cases | `__tests__/`, `SmartServe.Tests` |
+| No `package-lock.json` | Lockfile committed | `src/frontend/package-lock.json` |
+| DEV deployment needed hand-made secrets per app and failed | App names and URLs come from Bicep outputs; one-time setup script; DEV deployed | `deploy-dev.yml`, `infra/scripts/setup-dev.ps1` |
+| Orchestrator reported "FUNCTIONAL_TESTING paused — QC None" after code approval | Hand-off to CI/CD (`HANDED_OFF`) | `states.py`, `orchestrator/__init__.py` |
+| API rejected every token (placeholder audience) | Placeholder removed (pending push); DEV patched | `appsettings.json` |
+
+Table: Table 30.2 — Findings resolved since version 1.0
+
 ## Technical-debt register
 
 | ID | Description | Location | Business impact | Technical impact | Priority | Recommendation | Complexity |
 |---|---|---|---|---|---|---|---|
-| TD-01 | Request + audit saved in two `SaveChanges` calls | `AccessRequestsController.AuditAsync` | Possible unaudited changes | Consistency | High | Single unit of work | Low |
-| TD-02 | Unused enum states (`Draft`, `ManagerApproval`, `AwaitingConfirmation`) and unused `AssignedToId`, `CanAdminister` | `Domain`, `Program.cs` | Confusing behaviour | Dead code | Low | Implement or remove | Low |
-| TD-03 | Stage names as magic strings ("Manager", "Security", "IT") | `WorkflowService`, controller | Fragile changes | Maintainability | Medium | Enum/constants | Low |
+| TD-01 | Database migrations run at application startup | `Program.cs` | Risky with several instances | Startup coupling, elevated DB rights | Medium | Apply migrations from the pipeline | Medium |
+| TD-02 | Concurrent transitions return 400 instead of 409 | `RequestsController` | Unclear client handling | API semantics | Low | Map `ConcurrentTransitionException` to 409 | Low |
+| TD-03 | `api.ts` defines calls no screen uses yet | `src/frontend/src/api.ts` | — | Untested code paths | Low | Build the screens or trim | Low |
 | TD-04 | Stale committed logs (`build-release.log`, `test-release.log`) | `src/backend` | Misleading evidence | — | Low | Remove; publish CI artifacts | Low |
-| TD-05 | No `package-lock.json`; CI falls back to `npm install` | `src/frontend` | Non-reproducible builds | Supply chain | Medium | Commit the lockfile; use `npm ci` | Low |
-| TD-06 | Single-component SPA without router/state structure | `App.tsx` | Slower feature delivery | Maintainability | Medium | Introduce routing and feature folders | Medium |
-| TD-07 | `model-routing.yml` weights not used in selection; `pricing.yml` lacks configured models | `config/` | Misleading cost/routing expectations | — | Low | Implement or simplify; update pricing | Low |
-| TD-08 | Staging/production parameter files unused by workflows | `infra/`, workflows | IaC drift between environments | Drift | Medium | Run Bicep per environment in staging/production workflows | Medium |
-| TD-09 | `test.yml` Python 3.11 vs runtime 3.13 | `.github/workflows/test.yml` | Version skew | — | Low | Align versions | Low |
-| TD-10 | Third-party actions pinned by tag | workflows | Supply-chain risk | — | Medium | Pin by commit SHA | Low |
+| TD-05 | Single-component SPA without router/state structure | `App.tsx` | Slower feature delivery | Maintainability | Medium | Introduce routing as screens are added | Medium |
+| TD-06 | `model-routing.yml` weights not used in selection; `pricing.yml` lacks configured models | `config/` | Misleading cost/routing expectations | — | Low | Implement or simplify; update pricing | Low |
+| TD-07 | Staging/production workflows lack Bicep, web deployment and a 401-aware health check | workflows | IaC drift between environments | Drift | Medium | Mirror `deploy-dev.yml` | Medium |
+| TD-08 | `test.yml` Python 3.11 vs runtime 3.13; CI frontend on Node 20 vs DEV on 22 | workflows | Version skew | — | Low | Align versions | Low |
+| TD-09 | Third-party actions pinned by tag | workflows | Supply-chain risk | — | Medium | Pin by commit SHA | Low |
+| TD-10 | Bicep linter warning: hard-coded `login.microsoftonline.com` | `main.bicep` | Sovereign-cloud portability | — | Low | Use `environment().authentication.loginEndpoint` | Low |
 
-Table: Table 30.2 — Technical-debt register
+Table: Table 30.3 — Technical-debt register
 
 # Production Readiness Checklist {#production-readiness}
 
 | Area | Status | Evidence |
 |---|---|---|
-| Architecture review | Partially ready | ARCH-23 approved through SDLC; implementation diverges (§11, §16.4) |
-| Security review | Not ready | R-01 critical; network exposure R-08 |
-| Identity configuration | Not ready | SPA sign-in missing (R-02); app registrations not in workspace |
-| Secrets management | Partially ready | Key Vault + MI + OIDC; slot role missing (R-06); SQL password admin (R-05) |
-| API validation | Partially ready | DataAnnotations; enum contract broken (R-03) |
-| Database readiness | Not ready | No migrations (R-04); no MI user (R-05) |
+| Architecture review | Partially ready | ARCH-23 approved through SDLC; implementation follows it, several mappings *(proposed)* |
+| Security review | Not ready | R-01 critical; R-04, R-05 |
+| Identity configuration | Partially ready | DEV app registrations and roles created by script; Graph permissions pending (R-02) |
+| Secrets management | Ready (DEV) | User-assigned MI, Key Vault, Entra-only SQL, OIDC; no stored secrets |
+| API validation | Ready | DataAnnotations, active-type check, string enums |
+| Database readiness | Ready (DEV) | Migration applied in DEV through the private endpoint |
+| Network | Ready (DEV) | Private endpoints, VNet integration, public access disabled on data services |
 | Backup | Requires confirmation | Platform defaults only |
 | Disaster recovery | Not ready | No RPO/RTO or DR design |
-| Testing | Partially ready | 16 backend tests pass; no frontend/e2e/role tests |
+| Testing | Partially ready | 32 backend + 5 frontend tests pass; no SQL Server, e2e or performance tests |
 | Performance | Requires confirmation | No targets or load tests |
-| Monitoring | Partially ready | App Insights + `/health`; no alerts/dashboards |
+| Monitoring | Partially ready | App Insights; notification outcome records; no dashboards |
 | Alerting | Not ready | No alert rules |
-| Operational runbooks | Partially ready | This document (§29); not yet exercised |
-| CI/CD | Partially ready | DEV/STAGING/PROD workflows; web not promoted (R-07) |
-| Rollback | Partially ready | Manual slot swap-back documented |
-| Environment separation | Requires confirmation | Depends on secrets/resource groups (§34) |
-| Data privacy | Requires confirmation | Personal identifiers stored; retention/erasure undefined |
+| Operational runbooks | Partially ready | This document (§29); partly exercised during the DEV deployment |
+| CI/CD | Partially ready | DEV fully automated; staging/production not set up (R-03) |
+| Rollback | Partially ready | DEV redeploy; production slot swap documented but not set up |
+| Environment separation | Requires confirmation | Staging/production design undecided (§34) |
+| Data privacy | Requires confirmation | Personal identifiers and e-mail addresses stored; retention/erasure undefined |
 | Cost controls | Requires confirmation | No budgets/alerts in IaC; SDLC budget null |
 | Access review | Requires confirmation | Role-assignment process not documented |
-| Documentation | Partially ready | This document set; ownership pending |
+| Documentation | Partially ready | This document set (v2.0); ownership pending |
 | Support ownership | Requires confirmation | CODEOWNERS placeholders |
-| Go-live approval | Not ready | Mandatory approval exists in workflow; preconditions above unmet |
+| Go-live approval | Not ready | Mandatory approval exists in the workflow; production environment not created |
 
 Table: Table 31.1 — Production readiness (statuses: Ready, Partially ready, Not ready, Not applicable, Requires confirmation)
 
@@ -82,59 +103,39 @@ Table: Table 31.1 — Production readiness (statuses: Ready, Partially ready, No
 All items below are **recommendations** and are not part of the current implementation.
 
 1. **Secure the automation first.** Remove script interpolation from workflows and restrict comment-driven automation to repository members (R-01).
-2. **Make the application work end to end:**
-    - SPA sign-in.
-    - JSON enum converter.
-    - Committed migrations.
-    - SQL managed-identity users.
-    - Slot Key Vault role.
-    - Web deployment, `VITE_*` values, CORS and audience settings per environment.
-3. **Close functional gaps from the approved artifacts:**
-    - Notifications, preferably delivered asynchronously.
-    - Request-type management.
-    - Service-request workflow.
-    - Audit with old/new status in the same transaction.
-    - Paging.
-4. **Harden security:**
-    - Private endpoints and VNet integration.
-    - Entra-only SQL authentication.
-    - Rate limiting, HSTS/CSP and a ProblemDetails handler.
-    - Key Vault purge protection.
-5. **Strengthen DevSecOps:**
-    - Blocking SCA and coverage gates.
-    - Dependabot.
-    - SHA-pinned actions.
-    - Branch protection with real CODEOWNERS teams.
-    - SBOM and artifact attestation.
-6. **Operational readiness:** alerts, availability tests, diagnostic settings, dashboards, and agreed RPO/RTO, retention and performance targets.
-7. **Agentic SDLC governance:**
-    - Keep human review mandatory for code.
-    - Restore a stricter code QC threshold once the stage is stable.
-    - Add a per-tool allowlist for the Code agent.
-    - Update the pricing table for the configured models.
+2. **Complete DEV:**
+    - Grant the API identity its Graph permissions and set the sender mailbox (R-02).
+    - Push the pending fixes (audience placeholder removal, staging switch, SPA pre-authorization in the setup script).
+3. **Build the remaining screens** for managers, IT administrators, auditors and security reviewers (R-07).
+4. **Tighten authorization and data rights:**
+    - Restrict decisions to the routed manager and prevent self-approval; store decision notes (R-05).
+    - Separate the migration identity from the runtime identity (R-04).
+5. **Set up staging and production** once the design is decided, mirroring the DEV pipeline: Bicep, web deployment, 401-aware health check, `production` environment with required reviewers (R-03).
+6. **Harden security:** rate limiting, HSTS/CSP and a ProblemDetails handler; Key Vault purge protection; Front Door/WAF for production.
+7. **Strengthen DevSecOps:** blocking SCA, coverage and frontend-test gates; Dependabot; SHA-pinned actions; branch protection with real CODEOWNERS teams; SBOM and artifact attestation.
+8. **Operational readiness:** alerts (including *Failed* notifications), availability tests, diagnostic settings, dashboards, and agreed RPO/RTO, retention and performance targets.
+9. **Agentic SDLC governance:** keep human review mandatory for code; restore a stricter code QC threshold once stable; add a per-tool allowlist for the Code agent; update the pricing table.
 
 # Implementation Roadmap {#implementation-roadmap}
 
 | # | Phase | Recommendation | Reason | Priority | Dependency | Expected benefit | Suggested owner | Complexity |
 |---|---|---|---|---|---|---|---|---|
 | 1.1 | Immediate critical fixes | Fix workflow script injection (`env:` + member check) | R-01 | P0 | — | Removes remote code execution on runners | Platform + Security | Low |
-| 1.2 | Immediate critical fixes | Implement SPA sign-in (MSAL redirect) | R-02 | P0 | Entra app registrations | Users can authenticate | Frontend | Low |
-| 1.3 | Immediate critical fixes | Add `JsonStringEnumConverter` + contract test | R-03 | P0 | — | Create/list work from UI | Backend | Low |
-| 1.4 | Immediate critical fixes | Commit the initial EF migration; provision SQL MI users (+ slot) | R-04, R-05 | P0 | Entra SQL admin | Database usable in Azure | Backend + Platform | Medium |
-| 1.5 | Immediate critical fixes | Grant the slot MI Key Vault role; set `Cors__AllowedOrigins`, `AzureAd__Audience`; deploy web + `VITE_*` per environment | R-06, R-07 | P0 | 1.2 | Staging/production functional | Platform | Medium |
-| 2.1 | Architecture and security | Private endpoints, VNet integration, disable public SQL | R-08 | P1 | Network design | Reduced attack surface | Platform + Security | High |
-| 2.2 | Architecture and security | Entra-only SQL auth; Key Vault purge protection | R-05 | P1 | 1.4 | Stronger identity posture | Platform | Low |
-| 2.3 | Architecture and security | Rate limiting, HSTS/CSP, ProblemDetails, transactional audit with old/new status | R-13, R-14, TD-01 | P1 | — | Compliance with NFR-005, resilience | Backend | Medium |
-| 2.4 | Architecture and security | Confirm and implement role scoping (manager direct reports, `/health` policy) | R-09, R-12 | P1 | Business decision | Least privilege | Architect + Backend | Medium |
-| 3.1 | Test and quality | Role × endpoint integration tests, frontend tests, e2e | Test gaps | P1 | 1.2, 1.3 | Regression safety | QA + teams | Medium |
-| 3.2 | Test and quality | Enforce coverage threshold and blocking SCA; Dependabot; lockfile | R-11, TD-05 | P1 | — | Supply-chain assurance | Platform | Low |
-| 4.1 | Deployment | Run Bicep for staging/production; separate slot settings; optional auto swap-back | TD-08, R-16 | P2 | 1.5 | Consistent environments | Platform | Medium |
-| 4.2 | Deployment | Migrate auxiliary workflows to OIDC; pin actions by SHA; remove legacy assets | R-18, TD-10 | P2 | — | Smaller attack surface | Platform | Low |
-| 5.1 | Monitoring and operations | Alerts, availability test, diagnostic settings, dashboards, SPA telemetry | Observability gaps | P1 | — | Faster detection and response | Platform | Medium |
-| 5.2 | Monitoring and operations | Define RPO/RTO, retention, LTR backups; DR runbook | R-17 | P2 | Business input | Recoverability | Product + Platform | Medium |
-| 6.1 | Performance and scalability | Define targets; load tests; autoscale; paging | Open questions | P2 | 5.1 | Predictable performance | Platform + Backend | Medium |
-| 7.1 | Future enhancements | Notifications (queue-based), request-type management, service-request workflow, approval UI | R-10 | P1 | 1.x | Completes approved scope | Product + teams | High |
-| 7.2 | Future enhancements | Agentic SDLC: per-tool allowlist, stricter code gate, pricing update | R-15, TD-07 | P2 | — | Safer automation | Platform | Medium |
+| 1.2 | Immediate critical fixes | Grant Graph permissions; set sender mailbox | R-02 | P0 | Entra admin | Routing and e-mail work | Identity team | Low |
+| 1.3 | Immediate critical fixes | Push pending fixes (audience, staging switch, setup script) | — | P0 | — | Repository matches DEV | Platform | Low |
+| 2.1 | Functional completion | Approver, IT, auditor and security-review screens | R-07 | P1 | 1.2 | End-to-end journeys in the UI | Frontend | Medium |
+| 2.2 | Functional completion | Service-request workflow decision and implementation | R-08 | P1 | Business decision | Completes approved scope | Product + Backend | Medium |
+| 3.1 | Security | Routed-manager check, self-approval block, store notes | R-05 | P1 | — | Least privilege, auditability | Backend | Low |
+| 3.2 | Security | Separate migration identity; least-privilege runtime DB user | R-04 | P1 | Pipeline change | Smaller blast radius | Platform + Backend | Medium |
+| 3.3 | Security | Rate limiting, HSTS/CSP, ProblemDetails; Key Vault purge protection | R-11 | P1 | — | Hardened API | Backend + Platform | Low |
+| 4.1 | Deployment | Staging and production environments mirroring DEV; `production` environment with reviewers | R-03, TD-07 | P1 | Design decision (§34 Q3) | Controlled releases | Platform | Medium |
+| 4.2 | Deployment | Decide the health-probe approach | R-06 | P2 | NFR-001 decision | Reliable platform health | Architect | Low |
+| 4.3 | Deployment | Migrate auxiliary workflows to OIDC; pin actions by SHA; remove legacy assets | R-15, TD-09 | P2 | — | Smaller attack surface | Platform | Low |
+| 5.1 | Quality | Blocking gates, Dependabot, SQL Server and e2e tests | R-10 | P1 | 2.1 | Regression and supply-chain assurance | Platform + QA | Medium |
+| 5.2 | Monitoring and operations | Alerts, availability test, diagnostic settings, dashboards, SPA telemetry | R-13 | P1 | — | Faster detection and response | Platform | Medium |
+| 5.3 | Monitoring and operations | Define RPO/RTO, retention, LTR backups; DR runbook | R-14 | P2 | Business input | Recoverability | Product + Platform | Medium |
+| 6.1 | Performance and scalability | Define targets; load tests; autoscale; move migrations out of startup | Open questions | P2 | 3.2 | Predictable performance | Platform + Backend | Medium |
+| 7.1 | Agentic SDLC | Per-tool allowlist, stricter code gate, pricing update | R-12, TD-06 | P2 | — | Safer automation | Platform | Medium |
 
 Table: Table 33.1 — Prioritised roadmap (no delivery dates are given)
 
@@ -143,19 +144,19 @@ Table: Table 33.1 — Prioritised roadmap (no delivery dates are given)
 | # | Question | Why it matters | Source / gap |
 |---|---|---|---|
 | Q1 | Who are the product owner, data owner, support owner and approvers of this document? | Governance | Not in workspace |
-| Q2 | Where are the Entra app registrations (API, SPA, app roles) defined, and who assigns roles? | Access control | Not in workspace |
-| Q3 | Are staging and production separate App Service apps and resource groups? | Environment isolation | Secrets `AZURE_API_APP_STAGING` / `_PROD` |
-| Q4 | Should `/health` be anonymous (App Service probes) or authenticated (NFR-001)? | Compliance | `Program.cs` vs NFR-23 |
-| Q5 | Which roles may read which requests (manager scoping, security reviewer, AppAdmin)? | Least privilege | ARCH-23 *(proposed)* |
-| Q6 | Notification channel, recipients, content, failure handling | Functional | PRD-FR-004, TASK-010/011 |
-| Q7 | Required submission fields per request type; request-type lifecycle | Functional | TASK-005/012 |
-| Q8 | Service-request workflow beyond submission | Functional | TASK-015 |
+| Q2 | Who assigns app roles in Entra ID, and which Entra administrator grants the Graph permissions? | Access control | Manual steps |
+| Q3 | Staging/production design: plan size (S1 or P1v3), resource group, and the production approver | Environment isolation, cost | `deploy-production.yml` assumes a staging slot on the production app |
+| Q4 | Should the API expose an anonymous liveness path for App Service probes, or keep every endpoint authenticated (NFR-001)? | Availability vs compliance | `Program.cs`, NFR-23 |
+| Q5 | Confirm the *(proposed)* role mappings (Manager, ItAdmin, AppAdmin) and whether decisions must be limited to the routed manager | Least privilege | `Program.cs`, ARCH-23 |
+| Q6 | Which mailbox sends notifications, and are the templates acceptable? | Functional | `Graph:SenderUserId`, `EmailTemplates.cs` |
+| Q7 | Required submission fields per request type; additional seeded types | Functional | `DbSeeder.cs` *(proposed)* |
+| Q8 | Service-request workflow beyond submission | Functional | `WorkflowService` *(open question)* |
 | Q9 | Performance, availability, scalability, RPO/RTO targets | NFRs | NFR-23 |
 | Q10 | Audit and data retention, erasure, privacy obligations | Compliance | NFR-23, BRD-23 |
-| Q11 | Is Blob Storage needed (attachments)? If not, remove its role assignment | Least privilege | `main.bicep` |
+| Q11 | Is Blob Storage needed (attachments)? If not, remove it and its role assignment | Least privilege | `main.bicep` |
 | Q12 | Branch-protection, environment protection and CODEOWNERS teams | Governance | Repository settings |
-| Q13 | Is Front Door required for production (`front_door_enabled: true`)? | Network/WAF | `config/environments.yml` |
-| Q14 | Data residency / Azure region | Compliance | Parameter `location` defaults to the resource-group location |
+| Q13 | Is Front Door / WAF required for production (`front_door_enabled: true`)? | Network/WAF | `config/environments.yml` |
+| Q14 | Data residency / Azure region (DEV uses West US 3) | Compliance | Resource-group location |
 
 Table: Table 34.1 — Open questions and missing information
 
@@ -171,9 +172,12 @@ Table: Table 34.1 — Open questions and missing information
 | EF Core | Entity Framework Core, the .NET ORM |
 | Entra ID | Microsoft Entra ID (formerly Azure AD), the identity provider |
 | gitleaks | Secret-scanning tool |
-| Managed identity (MI) | Azure-managed service identity used instead of stored credentials |
+| Managed identity (MI) | Azure-managed service identity used instead of stored credentials; *user-assigned* identities exist independently of the app and can be shared |
+| Microsoft Graph | Microsoft 365 / Entra ID API used for manager lookup and sending e-mail |
 | MSAL | Microsoft Authentication Library (browser) |
 | OIDC | OpenID Connect; used by GitHub Actions to obtain Azure tokens without secrets |
+| Pre-authorization | Setting on an API app registration that lets a named client app use a scope without a consent prompt |
+| Private endpoint | Network interface that gives an Azure service a private IP address inside a virtual network |
 | QC | Quality control evaluation of generated artifacts |
 | Slot swap | App Service deployment-slot exchange used for zero-downtime promotion and rollback |
 | SPA | Single-page application |

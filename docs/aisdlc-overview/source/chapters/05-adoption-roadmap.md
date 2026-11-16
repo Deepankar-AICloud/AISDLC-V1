@@ -7,7 +7,8 @@
 | Source control | A GitHub repository (organisation or enterprise) with GitHub Actions enabled and permission for Actions to create pull requests |
 | AI | GitHub Copilot access, and a token for the Copilot CLI stored as a repository secret |
 | Security | GitHub CodeQL (default setup) and secret scanning enabled |
-| Cloud (for deployment) | An Azure subscription, resource groups per environment, and an Entra ID application with a GitHub OIDC federated credential |
+| Cloud (for deployment) | An Azure subscription with resource groups per environment, and a deployment identity with a GitHub OIDC federated credential (created by the one-time setup script) |
+| Identity | Permission to create Entra ID app registrations, and an administrator available to grant consent and directory/mail permissions where the tenant restricts them |
 | Governance | GitHub environments (`dev`, `staging`, `production`) with required reviewers on production; CODEOWNERS teams |
 | People | Named reviewers for business, product, architecture, engineering, security and release |
 
@@ -60,6 +61,7 @@ State what you know, and say explicitly what is still undecided. AISDLC will rec
 | AI-generated code with pipeline-run build and tests, scoped file changes, and revision across attempts | [AVAILABLE]{.badge .ok} |
 | Model router with human confirmation, escalation, fallback and decision log | [AVAILABLE]{.badge .ok} |
 | CI, secret scanning, CodeQL gate, staged deployment with DAST, mandatory production approval, release evidence | [AVAILABLE]{.badge .ok} |
+| Automatic hand-off from the AI stages to CI/CD; pipeline-provisioned infrastructure with a one-time environment setup script | [AVAILABLE]{.badge .ok} |
 | AI agents for code review, functional testing, performance and release | [PLANNED]{.badge .planned} — handled today by deterministic CI/CD tools and human review |
 
 Table: Table 14.1 — Capability status
@@ -70,6 +72,7 @@ Table: Table 14.1 — Capability status
 - **Iterations vary by stage.** Design stages with many open business decisions may need several review rounds. Answering clarifications in one consolidated comment works best.
 - **Token and cost visibility** depend on the AI provider. With the Copilot CLI, tokens and costs are reported as *unavailable*.
 - **The code-stage pass mark is currently 60/100.** The build and tests are mandatory, and human code review remains the deciding control. The threshold is configurable and is expected to rise as the stage matures.
+- **Enterprise environment integration needs people.** Tenant consent policies, organisational network policies and directory or mail permissions vary between organisations and cannot be granted by the pipeline. Expect a first-deployment review with someone who holds administrative rights.
 
 ## Roadmap
 

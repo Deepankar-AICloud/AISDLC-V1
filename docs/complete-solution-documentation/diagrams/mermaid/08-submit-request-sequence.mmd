@@ -2,21 +2,30 @@ sequenceDiagram
   autonumber
   actor Emp as Employee
   participant SPA as React SPA
-  participant API as AccessRequestsController
+  participant API as RequestsController
   participant WF as WorkflowService
-  participant DB as SmartServeDbContext (Azure SQL)
-  Emp->>SPA: Fill title, description and category, then Submit
-  SPA->>API: POST /api/requests {title, description, category}<br/>Bearer + x-correlation-id
-  API->>API: [Authorize(Policy="CanCreateRequest")]<br/>DataAnnotations validation
-  alt Validation or policy fails
+  participant DB as Azure SQL
+  participant NS as NotificationService
+  participant G as Microsoft Graph
+  Emp->>SPA: Choose kind and request type, enter title and description, Submit
+  SPA->>API: POST /api/requests {kind, requestTypeId, title, description}<br/>Bearer + x-correlation-id
+  API->>API: Policy CanCreateRequest and DataAnnotations validation
+  alt Validation, policy or request-type check fails
     API-->>SPA: 400 / 401 / 403
   else Valid
-    API->>WF: RequiresSecurityReview(category)
-    WF-->>API: true for Production/Database/Azure/VPN
-    API->>DB: INSERT AccessRequest (Status=Submitted)
-    API->>DB: INSERT AuditEntry (RequestCreated, actor, correlation id)
+    API->>WF: SubmitAsync
+    WF->>DB: One SaveChanges: INSERT PortalRequest (Submitted)<br/>+ INSERT RequestAudit (null → Submitted)
+    WF->>NS: RequesterSubmitted
+    NS->>G: sendMail (managed identity)
+    NS->>DB: NotificationRecord outcome
+    opt Access request
+      WF->>G: GET /users/{requester}/manager
+      alt Manager found
+        WF->>DB: One SaveChanges: UnderReview + audit
+        WF->>NS: ManagerWaitingApproval, RequesterUnderReview
+      else Not found / directory unavailable
+        WF->>DB: Stays Submitted, manager notification NotSent / Failed
+      end
+    end
     API-->>SPA: 201 Created + RequestResponse
-    SPA->>API: GET /api/requests (refresh list)
-    API-->>SPA: 200 OK [RequestResponse]
   end
-  Note over SPA,API: Gap: API serialises enums as numbers (no JsonStringEnumConverter)<br/>while the SPA sends and expects strings, so category binding and display need a fix

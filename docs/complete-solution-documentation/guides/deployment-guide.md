@@ -2,49 +2,49 @@
 
 # Deployment Guide {#deployment-guide}
 
-## One-time platform setup (manual — not automated in the workspace)
+## One-time DEV setup
 
-1. **Entra ID app registrations:**
-    - **API:** expose the scope `access_as_user` and define the six app roles.
-    - **SPA:** public client (SPA platform), redirect URIs for the web app URLs, and the API permission.
-2. **Deployment identity:** create an Entra app with a **GitHub OIDC federated credential** for this repository. Grant it rights on each resource group (scope **not confirmed**; least privilege recommended).
-3. **Resource groups and Key Vault secret:** create the resource groups. Store `sql-admin-password` in the Key Vault referenced by `infra/*.parameters.json`, replacing the `<sub>`, `<rg>`, `<kv>`, `<tenant-id>` and `<api-client-id>` placeholders.
-4. **GitHub environments:** create `dev`, `staging` and `production`. Production must have **required reviewers**.
-5. **GitHub secrets (names only):**
-    - Azure identity: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
-    - DEV: `AZURE_RESOURCE_GROUP_DEV`, `AZURE_API_APP_DEV`, `AZURE_WEB_APP_DEV`, `AZURE_API_URL_DEV`
-    - STAGING: `AZURE_API_APP_STAGING`, `AZURE_API_URL_STAGING`, `AZURE_WEB_URL_STAGING`
-    - PRODUCTION: `AZURE_RESOURCE_GROUP_PROD`, `AZURE_API_APP_PROD`, `AZURE_API_URL_PROD`
-    - Agentic SDLC: `COPILOT_GITHUB_TOKEN`, and optionally `GH_TOKEN`
-6. **SQL access for the API identity** (*required for the current connection string; not in IaC*):
-    1. Set an Entra administrator on the SQL server.
-    2. In `SmartServeDb`, run `CREATE USER [<api-app-name>] FROM EXTERNAL PROVIDER;` and grant the needed roles.
-    3. Do the same for the `staging` slot identity.
-7. **Schema:** create and commit an initial EF Core migration (`dotnet ef migrations add Initial`). Without it, `Migrate()` creates no tables.
+Run once, from the repository root, by a person with Owner on the resource group and permission to create app registrations:
+
+```powershell
+az login --tenant <TENANT_ID>
+az account set --subscription <SUBSCRIPTION_ID>
+gh auth status
+pwsh infra/scripts/setup-dev.ps1                 # defaults: -ResourceGroup rg-aisdlc-v1 -Repo <OWNER>/<REPO>
+```
+
+The script is idempotent and does only what a pipeline cannot do for itself:
+
+1. Registers the resource providers (Web, Sql, KeyVault, Storage, Network, Insights, OperationalInsights, ManagedIdentity).
+2. Creates the deployment identity `id-smartserve-github-dev` with GitHub OIDC federated credentials for the `dev` environment (classic and ID-based subjects), and grants it Contributor and Role Based Access Control Administrator on the resource group.
+3. Creates the Entra app registrations *SmartServe API (dev)* (scope `access_as_user`, six app roles, v2 tokens) and *SmartServe Web (dev)* (SPA redirect URIs), pre-authorizes the SPA on the API, and assigns the person running it the Employee role.
+4. Writes the GitHub `dev` environment secrets (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_RESOURCE_GROUP_DEV`) and variables (`ENTRA_API_CLIENT_ID`, `ENTRA_SPA_CLIENT_ID`).
+
+**Manual step for an Entra administrator (not automated):** grant the API identity (`smartserve-dev-api-id-<suffix>`) the Microsoft Graph application permissions it needs for manager lookup and e-mail (directory read and `Mail.Send`), and set the `graphSenderUserId` parameter to the sending mailbox. Until then, routing and e-mail are recorded as *Failed*.
 
 ## Standard release flow
 
-1. Merge to `main`. `deploy-dev.yml` provisions or updates DEV through Bicep, deploys the API and web app, and checks `/health`.
-2. On DEV success, `deploy-staging.yml` publishes the API to the `staging` slot, checks `/health`, and runs the ZAP baseline.
-3. Run **Deploy — PRODUCTION** manually. Enter `confirm = promote`, and optionally `issue_number` and `sdlc_run_id`.
+1. Merge to `main`. `deploy-dev.yml` provisions or updates DEV through Bicep, deploys the API and web app with the correct `VITE_*` values, and runs the smoke test.
+2. *(When enabled)* On DEV success, `deploy-staging.yml` publishes the API to the `staging` slot, checks `/health`, and runs the ZAP baseline.
+3. *(When enabled)* Run **Deploy — PRODUCTION** manually. Enter `confirm = promote`, and optionally `issue_number` and `sdlc_run_id`.
 4. The `production` environment reviewer approves.
 5. The workflow validates staging health, swaps the slot, verifies production `/health`, records `DEPLOYED_AND_VERIFIED` or `DEPLOYMENT_FAILED`, and uploads the release evidence pack (90 days).
 
 ## Rollback
 
-Swap the slots back:
+- **DEV:** re-run Deploy — DEV for the previous good commit.
+- **Production (once set up):** swap the slots back, then verify and record the outcome.
 
 ```bash
 az webapp deployment slot swap --resource-group <RG_PROD> --name <API_APP_PROD> --slot staging --target-slot production
 ```
 
-Then verify `/health` and record the outcome. The frontend has no slot, so redeploy the previous build.
+The frontend has no slot, so redeploy the previous build.
 
 ## Known deployment gaps
 
-- The staging and production workflows do not deploy the **web app** and do not run Bicep.
-- `VITE_*` values are not supplied in workflow builds.
-- `Cors__AllowedOrigins` and `AzureAd__Audience` are not set in app settings.
-- The staging-slot identity has no Key Vault role.
+- Staging and production are not set up: no infrastructure, secrets or `production` environment; `STAGING_ENABLED` is unset.
+- The staging and production workflows do not run Bicep, do not deploy the web app, and treat the 401 from `/health` as a failure.
+- Graph permissions and the sender mailbox must be granted manually.
 
-See §30 and roadmap phase 1.
+See §30 and the roadmap.

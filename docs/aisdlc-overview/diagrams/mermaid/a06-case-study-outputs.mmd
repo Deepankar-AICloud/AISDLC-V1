@@ -19,4 +19,12 @@ flowchart TB
     C["Code<br/>55 files · +8,531 / −513<br/>backend, frontend, IaC<br/>(PR #34)"]:::code
     A --> N --> T --> C
   end
+  subgraph S3["Verify and release (CI/CD pipeline)"]
+    direction LR
+    CI["CI + secret scan<br/>passed"]:::code
+    DV["DEV on Azure<br/>provisioned and deployed<br/>by the pipeline"]:::code
+    SP["STAGING / PRODUCTION<br/>next"]:::in
+    CI --> DV --> SP
+  end
   S1 --> S2
+  S2 --> S3

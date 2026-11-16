@@ -1,10 +1,10 @@
 title: "SmartServe"
 subtitle: "Complete Application Solution Document — Architecture, Workflow, Security, Deployment and Operations"
 document-type: "Technical Solution Documentation"
-version: "1.0"
-date: "2026-11-03"
+version: "2.0"
+date: "2026-11-04"
 repository: "Deepankar-AICloud/AISDLC-V1 (branch main)"
-commit: "605e414 (2026-11-03)"
+commit: "6429a22 (2026-11-04) + uncommitted fixes noted in the text"
 classification: "Confidential — internal and customer use"
 confidentiality: "This document describes the SmartServe application and the Agentic SDLC platform as implemented in the repository at the commit shown. It contains no secrets: identifiers, keys, connection strings and tenant values are masked (for example `<TENANT_ID>`, `<CONNECTION_STRING>`). Distribution is limited to the project team, customer stakeholders and authorised reviewers."
 lang: en-GB
@@ -15,7 +15,7 @@ document-control:
   - field: Document ID
     value: SS-SOL-DOC-001
   - field: Version / status
-    value: 1.0 — Generated baseline for review
+    value: 2.0 — Updated after code delivery and DEV deployment
   - field: Prepared by
     value: Generated from workspace analysis (GitHub Copilot, acting as solution architecture, engineering, DevSecOps, security and documentation roles)
   - field: Source of truth
@@ -31,3 +31,7 @@ revisions:
     date: "2026-11-03"
     author: "Generated (workspace analysis)"
     description: "Initial complete solution document generated from commit 605e414."
+  - version: "2.0"
+    date: "2026-11-04"
+    author: "Generated (workspace analysis)"
+    description: "Updated for the code-stage merge (PR #34) and the first Azure DEV deployment: new request model, notifications, private networking, pipeline-driven deployment, sign-in fixes."

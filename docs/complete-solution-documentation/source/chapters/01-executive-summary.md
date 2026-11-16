@@ -2,9 +2,14 @@
 
 ## Purpose of the application
 
-**SmartServe** is an *Enterprise IT Service & Access Request Portal*. Employees use it to request access (GitHub, Azure, VPN, applications, databases, production) and IT services (software installation, laptops, hardware, password support, general support). Requests move through a role-based approval chain: Manager → (Security reviewer for sensitive categories) → IT administrator → requester confirmation. Every action is written to an audit trail.
+**SmartServe** is an *Enterprise IT Service & Access Request Portal*. Employees submit two kinds of request, each against an administrator-managed **request type**:
 
-The repository also hosts an **Agentic SDLC platform**. It drives a requirement from a GitHub issue through BRD → PRD → Epic → Architecture → NFR → Task → Code, using AI agents (GitHub Copilot CLI), independent quality-control (QC) gates, human pull-request approval, a model router and token/cost telemetry. Issue #23 used this platform to produce the SmartServe requirements and architecture artifacts in `docs/`.
+- **Access requests** (seeded examples: *Application Access*, *VPN Access*) go to the requester's line manager, who is looked up in Microsoft Entra ID. The manager approves or rejects, and an IT administrator fulfils approved requests.
+- **Service requests** (seeded examples: *Laptop Request*, *Password Support*) are recorded as submitted. Their onward workflow is still an open question (§34).
+
+Every status change is written to an audit trail in the same database transaction, and requesters and managers receive e-mail notifications through Microsoft Graph.
+
+The repository also hosts an **Agentic SDLC platform**. It drives a requirement from a GitHub issue through BRD → PRD → Epic → Architecture → NFR → Task → Code, using AI agents (GitHub Copilot CLI), independent quality-control (QC) gates, human pull-request approval, a model router and token/cost telemetry. Issue #23 used this platform end to end: the stage PRs #24–#34 produced the SmartServe requirements, design, task plan and the application code described in this document. After the code stage, the platform hands over to the deterministic CI/CD pipeline.
 
 ## Business problem
 
@@ -14,44 +19,37 @@ Requests for IT access and services are typically fragmented across e-mail, chat
 
 | Area | Summary | Status |
 |---|---|---|
-| Users | Employee, Manager, SecurityReviewer, ItAdmin, AppAdmin, Auditor (Entra ID app roles) | [IMPLEMENTED]{.badge .ok} in API policies |
-| Core capability | Create request, list/read, stage decisions, confirm provisioning, comments, audit read | [IMPLEMENTED]{.badge .ok} (API) · [PARTIAL]{.badge .partial} (UI covers create + list only) |
-| Architecture | React 18 SPA (Vite) → .NET 8 Web API → EF Core 8 → Azure SQL; Entra ID; Key Vault; App Insights | [IMPLEMENTED]{.badge .ok} |
-| Hosting | Azure App Service (Linux) with an API `staging` slot; Bicep IaC per environment | [IMPLEMENTED]{.badge .ok} |
-| Security | JWT validation, role policies, ownership and stage checks, managed identity, TLS 1.2, security headers, CodeQL, gitleaks, OWASP ZAP | [IMPLEMENTED]{.badge .ok} with gaps (see §18) |
-| Delivery | CI on PRs; DEV auto-deploy; STAGING slot + DAST; PRODUCTION slot swap behind a mandatory approval | [IMPLEMENTED]{.badge .ok} with gaps (see §21) |
-| Notifications | E-mail on status changes (required by BRD/PRD/ARCH) | [PLANNED]{.badge .planned} — not in code |
-| Tests | 16 xUnit tests pass (2 integration, 14 unit) — executed during this analysis | [IMPLEMENTED]{.badge .ok}; frontend tests absent |
-| AI / agents | 12 configured SDLC agents, 7 driven by the orchestrator; Copilot CLI runner; QC with a different evaluator model | [IMPLEMENTED]{.badge .ok} |
+| Users | Employee, Manager, SecurityReviewer, ItAdmin, AppAdmin, Auditor (Entra ID app roles, defined on the DEV API app registration) | [IMPLEMENTED]{.badge .ok} |
+| Core capability (API) | Submit, list/read own, manager decision, IT fulfilment, retry routing, request-type administration, audit read-all with history, security review of access requests | [IMPLEMENTED]{.badge .ok} |
+| Core capability (UI) | Sign-in, submit, list own requests, administer request types | [PARTIAL]{.badge .partial} — no screens for decisions, fulfilment, audit or security review |
+| Architecture | React 18 SPA (Vite) → .NET 8 Web API → EF Core 8 (committed migration) → Azure SQL; Entra ID; Key Vault; Microsoft Graph; App Insights | [IMPLEMENTED]{.badge .ok} |
+| Hosting | Azure App Service (Linux) on a private virtual network for SQL and Key Vault; Bicep IaC; **DEV is deployed and running** | [IMPLEMENTED]{.badge .ok} DEV · [PLANNED]{.badge .planned} staging/production |
+| Security | Entra JWT, role policies with ownership scoping, Auditor write-block, user-assigned managed identity, Entra-only SQL, private endpoints, TLS 1.2, CodeQL, gitleaks | [IMPLEMENTED]{.badge .ok} with gaps (see §18) |
+| Delivery | CI on PRs; DEV provisioned and deployed by the pipeline through OIDC; staging/production workflows switched off until set up | [PARTIAL]{.badge .partial} |
+| Notifications | E-mail to requester and manager through Microsoft Graph, with outcome records and a reconciliation job | [IMPLEMENTED]{.badge .ok} in code · [PARTIAL]{.badge .partial} in DEV (Graph permissions not granted) |
+| Tests | 32 backend test cases (26 methods) pass; 5 frontend tests | [IMPLEMENTED]{.badge .ok} |
+| AI / agents | 12 configured SDLC agents, 7 driven by the orchestrator; hand-off to CI/CD after the code stage | [IMPLEMENTED]{.badge .ok} |
 
 Table: Table 1.1 — Solution status at a glance
 
 ## Key risks
 
 1. **Critical — workflow script injection.** `.github/workflows/feedback-handler.yml` (lines 34 and 98) inserts `github.event.comment.body` directly into a shell script. The job holds `contents: write` and `actions: write` on a public repository (§18.9).
-2. **High — the application cannot complete an end-to-end user journey yet.**
-    - The SPA never signs the user in (no `loginRedirect`/`loginPopup`).
-    - The API returns enums as numbers while the SPA sends and expects strings.
-    - No EF Core migrations are committed, so `Database.Migrate()` creates no schema in Azure SQL.
-    - The SQL managed-identity login is not provisioned by the IaC.
-3. **High — staging and production promotion is incomplete.**
-    - Only the API is deployed to staging/production; the web app is not.
-    - The staging slot's managed identity has no Key Vault role.
-    - CORS is not configured for deployed origins.
-4. **Medium — network exposure.** SQL is reachable on its public endpoint (an `AllowAzureServices` rule); there is no VNet and there are no private endpoints.
-5. **Medium — confirmed requirements not yet implemented:** notifications, request-type management, the service-request workflow and an anonymous-free `/health`.
+2. **High — notifications and manager routing do not work in DEV yet.** The API's managed identity has not been granted the Microsoft Graph application permissions (directory read, `Mail.Send`), and `Graph__SenderUserId` is empty. Access requests therefore stay *Submitted* with a failed manager notification until an Entra administrator grants the permissions (§30, R-02).
+3. **High — staging and production do not exist yet.** Their workflows are switched off (`STAGING_ENABLED`), no infrastructure or GitHub secrets exist for them, and the size, resource group and production approver are undecided (§20, §34).
+4. **Medium — tenant consent policy.** The Entra tenant only allows users to consent to low-risk permissions. The SPA is pre-authorized on the API, but sign-in may still need one-time admin consent for basic OpenID scopes in some tenants (§19).
+5. **Medium — confirmed requirements still partially open:** the service-request workflow beyond submission, UI screens for managers, IT administrators and auditors, and several role mappings marked *(proposed)*.
 
 ## Recommended next steps
 
-Fix the workflow injection first. Then close the end-to-end blockers in this order:
+Fix the workflow injection first. Then:
 
-1. Sign-in UI.
-2. JSON enum converter.
-3. Initial migration and SQL managed-identity user.
-4. Key Vault role for the slot.
-5. Frontend deployment and CORS for staging and production.
+1. Have an Entra administrator grant the API identity its Graph permissions and set a sender mailbox.
+2. Decide the staging/production design (size, resource group, approver) and enable those environments.
+3. Add the missing UI screens (decisions, fulfilment, audit, security review).
+4. Close the open business questions (service-request workflow, role mappings, retention, performance targets).
 
-After that, implement notifications and harden the network and supply chain. The prioritised roadmap is in §33 and the readiness checklist in §31.
+The prioritised roadmap is in §33 and the readiness checklist in §31.
 
 ## One-page solution summary
 
@@ -59,14 +57,14 @@ After that, implement notifications and harden the network and supply chain. The
 
 | Question | Answer (evidence) |
 |---|---|
-| What is it? | IT service and access request portal with an approval workflow and audit trail (`src/backend`, `src/frontend`) |
+| What is it? | IT service and access request portal with manager approval, IT fulfilment, notifications and an audit trail (`src/backend`, `src/frontend`) |
 | Who uses it? | Employees, managers, security reviewers, IT admins, application admins, auditors (`Domain/Enums.cs`) |
-| How does it work? | The SPA calls the REST API with an Entra ID bearer token. The API enforces role, ownership and stage rules, persists to Azure SQL and writes audit rows. |
-| Where does it run? | Azure App Service (API + web), Azure SQL, Key Vault, Storage, App Insights/Log Analytics (`infra/main.bicep`) |
-| How is it delivered? | GitHub Actions: CI → DEV → STAGING slot (+ ZAP) → PRODUCTION slot swap with mandatory approval (`.github/workflows/deploy-*.yml`) |
-| How is it secured? | Entra ID JWT, server-side policies, managed identity, Key Vault RBAC, TLS 1.2, CodeQL, gitleaks, ZAP, OIDC to Azure |
-| What is missing? | Sign-in UI, enum contract, migrations, notifications, private networking, staging/production frontend deployment (§30) |
-| How was it built? | With the Agentic SDLC platform (`scripts/sdlc`, `.github/agents`), which produced `docs/*/*-23.md` through QC-gated, human-approved PRs |
+| How does it work? | The SPA signs the user in with Entra ID and calls the REST API with a bearer token. The API enforces role and ownership rules, persists to Azure SQL with the audit row in the same transaction, looks up managers and sends e-mail through Microsoft Graph. |
+| Where does it run? | Azure App Service (API + web) with VNet integration; Azure SQL and Key Vault behind private endpoints; Storage, App Insights/Log Analytics (`infra/main.bicep`). DEV is live. |
+| How is it delivered? | GitHub Actions: CI → DEV (Bicep + code, OIDC) → STAGING slot (+ ZAP) → PRODUCTION slot swap with mandatory approval. Staging/production are switched off until set up. |
+| How is it secured? | Entra JWT, server-side policies, user-assigned managed identity, Entra-only SQL, private endpoints, Key Vault RBAC, TLS 1.2, CodeQL, gitleaks, OIDC to Azure |
+| What is missing? | Graph permissions in DEV, staging/production environments, approver/auditor UI screens, service-request workflow, alerting (§30) |
+| How was it built? | With the Agentic SDLC platform (`scripts/sdlc`, `.github/agents`): issue #23 → PRs #24–#34, each QC-gated and human-approved |
 
 Table: Table 1.2 — One-page solution summary
 
@@ -100,6 +98,7 @@ Employees, managers, security reviewers, IT administrators, application administ
 
 ## Value delivered by the current implementation
 
-- One request record per need, with a computed `RequiresSecurityReview` flag for Production, Database, Azure and VPN access (`Services/WorkflowService.cs`).
-- Separation of duties: approvers cannot decide on their own requests, and each stage requires its specific role (`AccessRequestsController.Decide`).
-- An append-only audit trail with actor, action and correlation ID, readable by Auditor and AppAdmin (`AuditController`).
+- Two request kinds against administrator-managed request types; inactive types cannot be used for new requests (`Services/WorkflowService.cs`, `Controllers/RequestTypesController.cs`).
+- Automatic routing of access requests to the requester's Entra ID manager, with an IT-admin retry when the manager cannot be resolved.
+- An append-only audit trail with old and new status, actor and timestamp, written in the same transaction as the status change; Auditors read all requests and each request's history (`AuditController`).
+- Notification outcomes (*Accepted*, *NotSent*, *Failed*) recorded per message, so missed e-mails are visible rather than silent (`NotificationService`).

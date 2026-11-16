@@ -4,12 +4,13 @@
 
 | Signal | Mechanism | Status |
 |---|---|---|
-| Application logs | `ILogger` (`Logging:LogLevel` Information / Warning for ASP.NET Core); `LogInformation` on request creation | [IMPLEMENTED]{.badge .ok} |
+| Application logs | `ILogger` (`Logging:LogLevel` Information / Warning for ASP.NET Core); notification concurrency events logged | [IMPLEMENTED]{.badge .ok} |
 | Requests, dependencies, exceptions | Application Insights SDK (`AddApplicationInsightsTelemetry`) → workspace-based App Insights → Log Analytics | [IMPLEMENTED]{.badge .ok} (API only) |
-| Distributed tracing / correlation | App Insights operation IDs; SPA sends `x-correlation-id`, stored on `AuditEntry.CorrelationId` | [PARTIAL]{.badge .partial} — header not propagated to telemetry |
-| Audit log | `AuditEntries` table (business actions) | [PARTIAL]{.badge .partial} |
-| Health endpoint | `/health` with EF Core DbContext check; App Service `healthCheckPath` | [IMPLEMENTED]{.badge .ok} |
-| Deployment monitoring | `curl /health` smoke checks; release evidence pack | [IMPLEMENTED]{.badge .ok} |
+| Distributed tracing / correlation | App Insights operation IDs; SPA sends `x-correlation-id`, which the API does not store or propagate | [PARTIAL]{.badge .partial} |
+| Audit log | `RequestAudits` table (every status change, old/new status) | [IMPLEMENTED]{.badge .ok} |
+| Notification outcomes | `NotificationRecords` (Accepted / NotSent / Failed with reason); stale *Pending* marked *Failed* every 5 minutes | [IMPLEMENTED]{.badge .ok} — no alert on failures |
+| Health endpoint | `/health` checks database connectivity; requires a token; App Service `healthCheckPath` | [PARTIAL]{.badge .partial} — platform probe receives 401 |
+| Deployment monitoring | DEV smoke test (API up, web reachable); release evidence pack for production | [IMPLEMENTED]{.badge .ok} |
 | Alerts, dashboards, availability tests | Not defined in Bicep or elsewhere | [NOT CONFIRMED]{.badge .nc} |
 | Frontend telemetry | No App Insights JS SDK; web app has no connection string | [NOT CONFIRMED]{.badge .nc} |
 | Platform diagnostic settings | App Service, SQL, Key Vault diagnostic settings not configured | [NOT CONFIRMED]{.badge .nc} |
@@ -20,11 +21,11 @@ Table: Table 23.1 — Observability signals
 
 Recommended additions:
 
-- Alert rules: 5xx rate, `/health` failures, SQL DTU, App Service CPU/memory, Key Vault access failures.
-- An App Insights availability test against `/health`.
+- Alert rules: 5xx rate, SQL DTU, App Service CPU/memory, Key Vault access failures, and notification records with status *Failed*.
+- An App Insights availability test against the web root (and an authenticated or separate liveness check for the API).
 - Diagnostic settings for every resource into Log Analytics.
 - Browser telemetry in the SPA.
-- A workbook covering requests by status and decision lead time.
+- A workbook covering requests by status, decision lead time and notification outcomes.
 
 # Error Handling and Resilience {#error-handling-resilience}
 
@@ -32,15 +33,16 @@ Recommended additions:
 
 | Concern | Current behaviour | Recommendation |
 |---|---|---|
-| API errors | Explicit 400/403/404; automatic 400 for invalid models; unhandled exceptions return 500 without ProblemDetails | `UseExceptionHandler` + `AddProblemDetails`; log with correlation ID |
-| Database transience | EF Core SQL Server provider without `EnableRetryOnFailure` | Enable retry-on-failure; pair it with execution strategies for the two-step save (request + audit) |
-| Consistency | Request change and audit row saved in **two** `SaveChangesAsync` calls; a failure between them leaves an unaudited change | Save both in one unit of work / transaction |
-| Concurrency | No concurrency token; simultaneous decisions can race | Add a `rowversion` concurrency token and handle 409 |
-| Idempotency | POSTs are not idempotent (duplicate submissions possible) | Idempotency key or duplicate detection (open question in TASK-23) |
-| Client | SPA shows the error text; no retry or back-off | Retry idempotent GETs with back-off; friendly messages |
-| Startup | `Migrate()` at startup; Key Vault provider failure stops the app | Run migrations in the pipeline; health-gate the slot before swap (already done) |
-| Deployments | Smoke tests retry 5–6 times; production failure stops with `DEPLOYMENT_FAILED` | Optional automatic swap-back after a failed post-swap health check |
-| Agentic SDLC | QC diagnosis, model escalation, `auto` fallback, JSON re-ask, patch persistence, fail-safe comments with retries | Keep; add per-stage timeouts in the job |
+| API errors | Explicit 400/404; automatic 400 for invalid models; 403 from policies; unhandled exceptions return 500 without ProblemDetails | `UseExceptionHandler` + `AddProblemDetails`; log with correlation ID |
+| Database transience | EF Core SQL Server provider without `EnableRetryOnFailure` | Enable retry-on-failure with execution strategies |
+| Consistency | Status change and audit row saved in **one** `SaveChanges`; tested on SQLite | Keep; add a SQL Server test |
+| Concurrency | GUID concurrency tokens on requests and notification records; a losing transition returns 400 and rolls back with its audit row | Return 409 instead of 400 for concurrent changes |
+| External services (Graph) | Directory outage keeps the request *Submitted* and records *Failed*; mail failures recorded per message; no automatic retry | IT-admin `retry-routing` exists for routing; consider automatic retry with back-off for e-mail |
+| Idempotency | POSTs are not idempotent (duplicate submissions possible) | Idempotency key or duplicate detection |
+| Client | SPA shows the error text; interactive sign-in on token expiry; no retry | Retry idempotent GETs with back-off; friendlier messages |
+| Startup | `MigrateAsync` and seeding at startup; Key Vault provider failure stops the app | Run migrations in the pipeline for multi-instance scale-out |
+| Deployments | DEV smoke test waits up to 10 minutes; production failure stops with `DEPLOYMENT_FAILED` | Optional automatic swap-back after a failed post-swap health check |
+| Agentic SDLC | QC diagnosis, model escalation, `auto` fallback, JSON re-ask, patch persistence, fail-safe comments with retries, hand-off to CI/CD after code | Keep; add per-stage timeouts in the job |
 
 Table: Table 24.1 — Error handling and resilience
 
@@ -50,17 +52,17 @@ No workload figures (users, requests per second, data volume) and no latency or 
 
 | Topic | Confirmed | Recommended |
 |---|---|---|
-| Application scaling | One App Service instance (B1 / P1v3); stateless API (bearer tokens), so horizontal scale-out is possible | Autoscale rules on CPU/requests once targets exist |
+| Application scaling | One App Service instance (B1 in DEV; S1/P1v3 designed for staging/production); stateless API, so horizontal scale-out is possible | Autoscale rules on CPU/requests once targets exist; move migrations out of startup first |
 | Database scaling | Basic (dev/staging), S1 (production) DTU model | Size against measured load; consider serverless vCore |
-| Caching | None | Cache reference data (request types) once implemented |
-| Queues / asynchronous work | None | Use a queue (e.g. Service Bus) for e-mail notifications to decouple delivery |
-| Connection pooling | ADO.NET pooling (default) | — |
+| Caching | None | Cache request types (read on every form load) |
+| Queues / asynchronous work | None; e-mail is sent synchronously after the transaction commits, with a background reconciliation job | A queue (e.g. Service Bus) if e-mail latency affects request times |
+| Connection pooling | ADO.NET pooling (default); short-lived contexts via `IDbContextFactory` | — |
 | Rate limiting | None | ASP.NET Core rate limiter or Front Door/WAF |
-| Timeouts / retry / circuit breaker | Framework defaults only | EF retry-on-failure; Polly for future outbound calls (Graph/e-mail) |
-| Pagination | List endpoints return everything (requests) or 500 (audit) | Server-side paging and filtering |
+| Timeouts / retry / circuit breaker | Framework defaults only | EF retry-on-failure; Polly for Graph calls |
+| Pagination | Audit and security-review endpoints paged (default 50, max 200); own-request list unpaged | Page the own-request list if volumes grow |
 | Load balancing | App Service built-in | — |
-| Health checks | `/health` incl. DB | Separate liveness and readiness |
-| Graceful degradation | Not designed | Queue notifications; read-only mode |
+| Health checks | `/health` including DB, token required | Separate anonymous liveness and authenticated readiness, if NFR-001 allows |
+| Graceful degradation | Directory outages leave requests *Submitted* for retry; e-mail failures do not block transitions | Read-only mode |
 
 Table: Table 25.1 — Performance and scalability
 

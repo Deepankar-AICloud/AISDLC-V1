@@ -4,15 +4,17 @@ flowchart TD
   classDef bad fill:#FDE7E9,stroke:#A4262C,color:#1B1B1B
 
   subgraph App["SmartServe API errors"]
-    E1["Invalid body → 400 (automatic model validation)"]:::warn
+    E1["Invalid body or workflow rule → 400"]:::warn
     E2["No / invalid token → 401"]:::warn
-    E3["Role, ownership or stage violation → 403"]:::warn
-    E4["Unknown id → 404"]:::warn
+    E3["Missing role or Auditor write → 403"]:::warn
+    E4["Unknown id or another user's request → 404"]:::warn
+    E7["Concurrent transition → rolled back with its audit row (400)"]:::ok
+    E8["Graph outage → request stays Submitted, notification Failed;<br/>IT admin retry-routing"]:::warn
     E5["Unhandled exception → default ASP.NET Core 500<br/>(no exception handler / ProblemDetails configured)"]:::bad
-    E6["SPA: any non-2xx → message in alert box; no retry"]:::warn
+    E6["SPA: any non-2xx → message in alert box;<br/>token interaction → redirect sign-in"]:::warn
   end
   subgraph Ops["Deployment errors"]
-    D1["Smoke test curl --retry 5/6 (10 s delay)"]:::ok
+    D1["DEV smoke test: up to 30 × 20 s for API, 10 retries for web"]:::ok
     D2["Staging unhealthy → abort promotion"]:::ok
     D3["Swap or prod health fails → DEPLOYMENT_FAILED<br/>manual swap-back"]:::bad
   end

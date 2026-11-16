@@ -4,24 +4,30 @@ flowchart TB
   classDef sec fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
   classDef obs fill:#FFF8E1,stroke:#C19C00,color:#1B1B1B
 
-  subgraph RG["Azure resource group (one per environment: dev / staging / production)"]
-    PLAN["App Service Plan (Linux)<br/>B1 (dev/staging) · P1v3 (production)"]:::web
-    API["API App Service<br/>DOTNETCORE|8.0 · httpsOnly · FTPS disabled<br/>healthCheckPath /health · system-assigned MI"]:::web
-    SLOT["API slot 'staging'<br/>same runtime + settings, own MI"]:::web
-    WEB["Web App Service<br/>NODE|20-lts · httpsOnly"]:::web
-    SQLS["Azure SQL logical server<br/>TLS 1.2 · public access Enabled"]:::data
-    SQLDB[("SmartServeDb<br/>Basic (dev/staging) · S1 zone-redundant (production)")]:::data
-    ST["Storage account StorageV2<br/>LRS / ZRS · no public blob"]:::data
-    KV["Key Vault (RBAC, soft delete)"]:::sec
+  subgraph RG["Azure resource group (one per environment; DEV = rg-aisdlc-v1, deployed)"]
+    PLAN["App Service Plan (Linux)<br/>B1 (dev) · S1 (staging) · P1v3 (production)"]:::web
+    API["API App Service<br/>DOTNETCORE|8.0 · httpsOnly · FTPS disabled<br/>VNet integration (route-all)"]:::web
+    SLOT["API slot 'staging'<br/>staging/production only"]:::web
+    WEB["Web App Service<br/>NODE|22-lts · pm2 serve --spa"]:::web
+    UAMI["User-assigned identity<br/>smartserve-env-api-id"]:::sec
+    VNET["VNet 10.40.0.0/16<br/>subnets: app · private-endpoints"]:::sec
+    SQLS["Azure SQL server<br/>Entra-only · public access disabled"]:::data
+    SQLDB[("SmartServeDb<br/>Basic · S1 zone-redundant (production)")]:::data
+    ST["Storage account<br/>public access + shared keys disabled"]:::data
+    KV["Key Vault (RBAC, soft delete)<br/>public access disabled"]:::sec
+    PE["Private endpoints + private DNS<br/>SQL · Key Vault"]:::sec
     LAW["Log Analytics<br/>30 d / 90 d retention"]:::obs
     AI["Application Insights (workspace-based)"]:::obs
   end
   PLAN --- API & WEB
-  API --- SLOT
-  API -->|"MI: AD Managed Identity auth (conn string)"| SQLDB
+  API -.- SLOT
+  API --- UAMI
+  API --- VNET --- PE
+  PE --> SQLS
+  PE --> KV
   SQLS --- SQLDB
-  API -->|"MI: Key Vault Secrets User"| KV
-  API -->|"MI: Storage Blob Data Contributor"| ST
-  API & SLOT -.->|"ApplicationInsights__ConnectionString"| AI
-  WEB -.->|"no App Insights setting"| AI
+  UAMI -->|"SQL Entra admin"| SQLS
+  UAMI -->|"Key Vault Secrets User"| KV
+  UAMI -->|"Storage Blob Data Contributor"| ST
+  API -.->|"ApplicationInsights__ConnectionString"| AI
   AI --> LAW

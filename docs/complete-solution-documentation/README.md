@@ -1,6 +1,6 @@
 # SmartServe — Complete Solution Documentation
 
-Customer-ready technical documentation for the **SmartServe** IT Service & Access Request Portal and the **Agentic SDLC** platform in this repository. It was generated from the source at commit `605e414`.
+Customer-ready technical documentation for the **SmartServe** IT Service & Access Request Portal and the **Agentic SDLC** platform in this repository. Version 1.0 was generated from the source at commit `605e414`; version 2.0 reflects commit `6429a22`, after the code-stage merge and the first Azure DEV deployment.
 
 ## Deliverables
 

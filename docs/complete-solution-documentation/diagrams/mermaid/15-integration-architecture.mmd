@@ -6,17 +6,17 @@ flowchart LR
   API["SmartServe.Api"]:::int
   SPA["React SPA"]:::int
   ENTRA["Microsoft Entra ID<br/>OIDC / OAuth 2.0 (sync, HTTPS)"]:::ext
-  SQL["Azure SQL<br/>TDS 1433, Encrypt=True (sync)"]:::ext
-  KV["Azure Key Vault<br/>config provider at startup (sync)"]:::ext
+  SQL["Azure SQL<br/>TDS, Encrypt=True, private endpoint (sync)"]:::ext
+  KV["Azure Key Vault<br/>config provider at startup, private endpoint"]:::ext
+  GR["Microsoft Graph<br/>users, manager, sendMail (sync, after commit)"]:::ext
   AI["Application Insights<br/>telemetry SDK (async batch)"]:::ext
   BLOB["Azure Storage (Blob)<br/>provisioned + RBAC, no code usage found"]:::gap
-  MAIL["Email / notification service<br/>not implemented"]:::gap
 
-  SPA -->|"token acquisition"| ENTRA
+  SPA -->|"redirect sign-in, tokens"| ENTRA
   SPA -->|"REST/JSON over HTTPS"| API
   API -->|"JWT validation metadata"| ENTRA
-  API --> SQL
+  API -->|"managed identity"| SQL
   API -.-> KV
+  API -->|"managed identity<br/>(permission pending in DEV)"| GR
   API -.-> AI
   API -.->|"not wired"| BLOB
-  API -.->|"not wired"| MAIL

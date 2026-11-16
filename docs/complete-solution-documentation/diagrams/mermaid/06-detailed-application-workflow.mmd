@@ -4,19 +4,19 @@ flowchart TD
   classDef db fill:#F3E5F5,stroke:#6A1B9A,color:#1B1B1B
   classDef err fill:#FDE7E9,stroke:#A4262C,color:#1B1B1B
 
-  U1["1 · SPA loads; MsalProvider wraps App"]:::ui
-  U2["2 · App.refresh() → api.list()"]:::ui
-  U3["3 · authHeader(): acquireTokenSilent<br/>for VITE_API_SCOPE"]:::ui
-  A1["4 · API pipeline: HTTPS → security headers<br/>→ CORS 'spa' → JWT AuthN → AuthZ"]:::api
+  U1["1 · SPA loads; MsalAuthenticationTemplate<br/>redirects to Entra ID sign-in"]:::ui
+  U2["2 · App.refresh() → api.list() + api.requestTypes.list()"]:::ui
+  U3["3 · authHeader(): acquireTokenSilent<br/>(interactive redirect if required)"]:::ui
+  A1["4 · API pipeline: HTTPS → security headers → CORS<br/>→ JWT AuthN → Auditor write-block → AuthZ"]:::api
   A2{"5 · Endpoint policy satisfied?"}:::api
-  A3["6 · Controller action<br/>role / ownership / stage checks"]:::api
-  D1[("7 · EF Core read/write<br/>AccessRequests, Approvals, Comments")]:::db
-  D2[("8 · AuditEntries row<br/>actor, action, correlation id")]:::db
-  R1["9 · JSON response (RequestResponse)"]:::api
+  A3["6 · Controller → WorkflowService<br/>kind / status / active-type rules"]:::api
+  D1[("7 · One SaveChanges: PortalRequests<br/>+ RequestAudits (old/new status)")]:::db
+  N1["8 · NotificationService → Graph sendMail<br/>NotificationRecords outcome"]:::api
+  R1["9 · JSON response (RequestResponse, enums as strings)"]:::api
   U4["10 · Table re-rendered"]:::ui
   E1["401 / 403 / 400 / 404<br/>surfaced in red alert box"]:::err
 
   U1 --> U2 --> U3 --> A1 --> A2
-  A2 -- yes --> A3 --> D1 --> D2 --> R1 --> U4
+  A2 -- yes --> A3 --> D1 --> N1 --> R1 --> U4
   A2 -- no --> E1
   A3 -- "rule violated" --> E1

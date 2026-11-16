@@ -7,10 +7,10 @@ flowchart LR
     BR["Browser + SPA<br/>user input, tokens in sessionStorage"]:::untrusted
     GHU["GitHub issue / PR comment authors<br/>free text (prompt & script injection risk)"]:::untrusted
   end
-  subgraph TB2["Trust boundary 2 — Azure App Service (PARTLY TRUSTED: authenticated callers)"]
+  subgraph TB2["Trust boundary 2 — Azure App Service + VNet (PARTLY TRUSTED: authenticated callers)"]
     API["SmartServe.Api<br/>validates JWT, roles, input"]:::semi
   end
-  subgraph TB3["Trust boundary 3 — Azure data plane (TRUSTED, identity-gated)"]
+  subgraph TB3["Trust boundary 3 — Azure data plane, private endpoints only (TRUSTED, identity-gated)"]
     SQL[("Azure SQL")]:::trusted
     KV["Key Vault"]:::trusted
     ST["Storage"]:::trusted
@@ -20,10 +20,13 @@ flowchart LR
     LLM["Copilot CLI agents<br/>untrusted context marked as data"]:::semi
   end
   IDP["Microsoft Entra ID"]:::trusted
+  GR["Microsoft Graph"]:::trusted
 
   BR -->|"HTTPS + Bearer"| API
   BR -->|"OIDC"| IDP
-  API -->|"Managed Identity"| SQL & KV & ST
+  API -->|"managed identity, private network"| SQL & KV
+  API -.->|"no code usage"| ST
+  API -->|"managed identity"| GR
   GHU -->|"events"| WF
   WF --> LLM
   WF -->|"OIDC federated credential"| API

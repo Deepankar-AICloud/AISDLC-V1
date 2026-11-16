@@ -1,34 +1,39 @@
-flowchart LR
+flowchart TB
   classDef fe fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
   classDef be fill:#E6F2FB,stroke:#0078D4,color:#1B1B1B
   classDef data fill:#F3E5F5,stroke:#6A1B9A,color:#1B1B1B
   classDef ext fill:#F3F2F1,stroke:#605E5C,stroke-dasharray:4 3,color:#1B1B1B
 
   subgraph Client["Browser (untrusted zone)"]
-    SPA["React 18 SPA<br/>App.tsx / api.ts / auth.ts"]:::fe
-    MSAL["MSAL Browser<br/>sessionStorage token cache"]:::fe
+    SPA["React 18 SPA<br/>App.tsx / AdminRequestTypesPage / api.ts"]:::fe
+    MSAL["MSAL Browser + React<br/>redirect sign-in, sessionStorage"]:::fe
   end
-  subgraph API["SmartServe.Api (.NET 8, App Service)"]
-    MW["ASP.NET Core pipeline<br/>HTTPS, headers, CORS, AuthN, AuthZ"]:::be
-    CTRL["Controllers<br/>AccessRequests, Audit"]:::be
-    WF["WorkflowService<br/>stage routing rules"]:::be
-    EF["SmartServeDbContext<br/>EF Core 8"]:::be
-    HC["/health<br/>EF Core health check"]:::be
+  subgraph API["SmartServe.Api (.NET 8, App Service, VNet-integrated)"]
+    MW["ASP.NET Core pipeline<br/>HTTPS, headers, CORS, AuthN,<br/>Auditor write-block, AuthZ"]:::be
+    CTRL["Controllers<br/>Requests, RequestTypes,<br/>Audit, SecurityReview"]:::be
+    WF["WorkflowService<br/>transitions + audit + concurrency"]:::be
+    NS["NotificationService<br/>+ reconciliation job"]:::be
+    EF["SmartServeDbContext<br/>EF Core 8 + migration"]:::be
   end
-  SQL[("Azure SQL<br/>SmartServeDb")]:::data
-  MEM[("EF In-Memory DB<br/>local dev only")]:::data
+  SQL[("Azure SQL<br/>SmartServeDb<br/>private endpoint")]:::data
+  MEM[("EF In-Memory DB<br/>Development / Testing only")]:::data
   ENTRA["Microsoft Entra ID"]:::ext
-  KV["Azure Key Vault"]:::ext
+  GRAPH["Microsoft Graph<br/>users, manager, sendMail"]:::ext
+  KV["Azure Key Vault<br/>private endpoint"]:::ext
   AI["Application Insights"]:::ext
 
   SPA -->|"fetch /api/* + Bearer token<br/>+ x-correlation-id"| MW
   SPA --- MSAL
-  MSAL -.->|"acquireTokenSilent<br/>(no sign-in call implemented)"| ENTRA
+  MSAL -->|"loginRedirect / acquireTokenSilent"| ENTRA
   MW --> CTRL --> WF
+  WF --> NS
   CTRL --> EF
-  HC --> EF
-  EF -->|"connection string set"| SQL
+  WF --> EF
+  NS --> EF
+  EF -->|"managed identity"| SQL
   EF -.->|"no connection string"| MEM
   MW -->|"JWT validation metadata"| ENTRA
-  API -.->|"config provider (Managed Identity)"| KV
-  API -.->|"telemetry SDK"| AI
+  WF -->|"manager lookup"| GRAPH
+  NS -->|"sendMail"| GRAPH
+  API -.->|"config (MI)"| KV
+  API -.->|"telemetry"| AI

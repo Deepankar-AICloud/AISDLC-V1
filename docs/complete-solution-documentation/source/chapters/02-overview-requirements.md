@@ -20,18 +20,20 @@ The legacy Ticket Tracker application code is **not present**. `src/app.py` and 
 
 | # | Capability | Backend | Frontend | Status |
 |---|---|---|---|---|
-| C1 | Submit a request (title, description, category) | `POST /api/requests` | Form in `App.tsx` | [IMPLEMENTED]{.badge .ok} (see enum contract gap, §16.4) |
-| C2 | List requests (own for plain employees, all for other roles) | `GET /api/requests` | Table in `App.tsx` | [IMPLEMENTED]{.badge .ok} |
-| C3 | View a request by ID with ownership enforcement | `GET /api/requests/{id}` | `api.get` defined, no UI | [PARTIAL]{.badge .partial} |
-| C4 | Stage decision (Manager / Security / IT) | `POST /api/requests/{id}/decision` | `api.decide` defined, no UI | [PARTIAL]{.badge .partial} |
-| C5 | Requester confirms provisioning and closes the request | `POST /api/requests/{id}/confirm` | `api.confirm` defined, no UI | [PARTIAL]{.badge .partial} |
-| C6 | Add comments | `POST /api/requests/{id}/comments` | `api.comment` defined, no UI | [PARTIAL]{.badge .partial} |
-| C7 | Read audit trail (≤ 500 newest, optional request filter) | `GET /api/audit` | none | [PARTIAL]{.badge .partial} |
-| C8 | Health probe | `GET /health` (anonymous) | — | [IMPLEMENTED]{.badge .ok} |
-| C9 | E-mail notifications on status change and to managers | — | — | [PLANNED]{.badge .planned} (ARCH-23, TASK-010/011) |
-| C10 | Request-type management by AppAdmin | — (`CanAdminister` policy unused) | — | [PLANNED]{.badge .planned} (TASK-012) |
-| C11 | Separate service-request workflow (submit-only) | — (all categories use the same chain) | — | [PLANNED]{.badge .planned} (TASK-015) |
-| C12 | File attachments in Blob Storage | — (storage provisioned, no code) | — | [NOT CONFIRMED]{.badge .nc} |
+| C1 | Sign in with Entra ID | JWT validation (`AddMicrosoftIdentityWebApi`) | MSAL redirect sign-in gate (`main.tsx`) | [IMPLEMENTED]{.badge .ok} |
+| C2 | Submit an access or service request against an active request type | `POST /api/requests` | Form in `App.tsx` | [IMPLEMENTED]{.badge .ok} |
+| C3 | List and view **own** requests | `GET /api/requests`, `GET /api/requests/{id}` | Table in `App.tsx` | [IMPLEMENTED]{.badge .ok} |
+| C4 | Route access requests to the requester's manager (Entra ID) | `WorkflowService.TryRouteToManagerAsync`, `GraphDirectoryService` | — (automatic) | [IMPLEMENTED]{.badge .ok} · needs Graph permission in Azure |
+| C5 | Manager approves or rejects an access request | `POST /api/requests/{id}/decision` | `api.ts` only, no screen | [PARTIAL]{.badge .partial} |
+| C6 | IT administrator fulfils an approved request | `POST /api/requests/{id}/fulfil` | `api.ts` only, no screen | [PARTIAL]{.badge .partial} |
+| C7 | IT administrator retries manager routing | `POST /api/requests/{id}/retry-routing` | `api.ts` only, no screen | [PARTIAL]{.badge .partial} |
+| C8 | Administer request types (create, edit, deactivate one-way) | `/api/request-types` | `AdminRequestTypesPage.tsx` | [IMPLEMENTED]{.badge .ok} |
+| C9 | Auditor reads all requests and each request's status history (paged) | `/api/audit/requests`, `/api/audit/requests/{id}/history` | `api.ts` only, no screen | [PARTIAL]{.badge .partial} |
+| C10 | Security reviewer reads access requests (paged, read-only) | `/api/security/access-requests` | `api.ts` only, no screen | [PARTIAL]{.badge .partial} |
+| C11 | E-mail notifications to requester and manager | `NotificationService`, `GraphEmailSender`, reconciliation job | — | [IMPLEMENTED]{.badge .ok} · needs Graph permission and sender mailbox in Azure |
+| C12 | Health probe including database connectivity | `GET /health` (requires a token) | — | [IMPLEMENTED]{.badge .ok} |
+| C13 | Service-request workflow beyond submission | — | — | [NOT CONFIRMED]{.badge .nc} (open question) |
+| C14 | File attachments in Blob Storage | — (storage provisioned, no code) | — | [NOT CONFIRMED]{.badge .nc} |
 
 Table: Table 4.1 — Capabilities and implementation status
 
@@ -41,20 +43,20 @@ The workspace contains none of the following: a mobile client, offline mode, int
 
 # User Roles and Personas {#user-roles}
 
-Roles are string constants in `src/backend/SmartServe.Api/Domain/Enums.cs` (class `Roles`). Entra ID must issue them as **app roles** in the `roles` claim. The app-registration manifest is not part of the workspace (§34).
+Roles are string constants in `src/backend/SmartServe.Api/Domain/Enums.cs` (class `Roles`). Entra ID issues them as **app roles** in the `roles` claim. For DEV, the roles are defined on the *SmartServe API (dev)* app registration by `infra/scripts/setup-dev.ps1`, which also assigns the person running it the Employee role.
 
-| Role | Persona | Allowed actions in code | Policy / check |
-|---|---|---|---|
-| Employee | Any staff member | Create requests; list/read **own** requests; comment on own requests; confirm own provisioned requests | `CanCreateRequest`; ownership filter `OnlyEmployee()`; requester check in `Confirm` |
-| Manager | Line manager | Create; list/read **all** requests; decide at the *Manager* stage | `CanApprove` + stage check |
-| SecurityReviewer | Information security | Create; list/read all; decide at the *Security* stage | `CanApprove` + stage check |
-| ItAdmin | IT operations | Create; list/read all; decide at the *IT* stage (provisioning) | `CanApprove` + stage check |
-| AppAdmin | Portal administrator | Create; list/read all; read the audit trail; `CanAdminister` defined but no endpoint uses it | `CanCreateRequest`, `CanAudit` |
-| Auditor | Compliance | List/read all requests; read the audit trail | `CanAudit` |
+| Role | Persona | Allowed actions in code | Policy | Mapping status |
+|---|---|---|---|---|
+| Employee | Any staff member | Submit requests; list/read **own** requests only | `CanCreateRequest`, `CanViewOwnRequests` | Confirmed |
+| Manager | Line manager | Submit; approve or reject access requests that are *UnderReview* | `CanCreateRequest`, `CanApprove` | *(proposed)* |
+| SecurityReviewer | Information security | Read access requests only (paged); no decisions | `CanSecurityReview` | Confirmed |
+| ItAdmin | IT operations | Submit; fulfil approved requests; retry manager routing | `CanCreateRequest`, `CanFulfil`, `CanRetryRouting` | *(proposed)* |
+| AppAdmin | Portal administrator | Submit; administer request types; read all requests and histories | `CanCreateRequest`, `CanAdminister`, `CanAudit` | *(proposed)* |
+| Auditor | Compliance | Read all requests and histories; **any write is blocked**, even with another role | `CanAudit` + Auditor write-block middleware | Confirmed |
 
 Table: Table 5.1 — Roles and permissions as implemented
 
-> **Note.** Users holding several roles get the union of their permissions. Anyone who is not a plain Employee can list and read **all** requests; there is no direct-report scoping for managers. The Architecture artifact (ARCH-23) treats several of these mappings as *(proposed)*, confirming only "employee: own requests" and "auditor: all requests, read-only" (§34).
+> **Note.** Reading requests is strictly scoped: `GET /api/requests` returns only the caller's own requests, and only Employees may call it. Other roles see requests only through their dedicated endpoints (audit, security review). The decision endpoint accepts any user with the Manager role; it does not check that the caller is the manager the request was routed to (§30, R-05).
 
 ![Figure 3 — Authorization model: roles → policies → actions](diagrams/rendered/18-authorization-model.png)
 
@@ -64,13 +66,13 @@ Requirements come from the approved artifacts for issue #23 (`docs/brd/BRD-23.md
 
 | Requirement | Summary | Implementation evidence | Status |
 |---|---|---|---|
-| BRD-REQ-001 / PRD-FR-001 | Employee request submission | `AccessRequestsController.Create`, `App.tsx` form | [IMPLEMENTED]{.badge .ok} |
-| BRD-REQ-002 / PRD-FR-002 | Review, approval, rejection, tracking | `Decide`, `WorkflowService.Advance/CurrentStage`, `List`, `GetById` | [IMPLEMENTED]{.badge .ok} (API) |
-| BRD-REQ-003 / PRD-FR-003 | Role permissions for six roles | `Program.cs` policies, controller checks | [IMPLEMENTED]{.badge .ok} |
-| BRD-REQ-004 / PRD-FR-004 | Notifications | No notification code | [PLANNED]{.badge .planned} |
-| BRD-REQ-009 / PRD-NFR-005 | Request history and audit information | `AuditEntry`, `AuditAsync`, `AuditController` | [PARTIAL]{.badge .partial} — old/new status not recorded; list capped at 500 |
-| TASK-012 | Request-type management (AppAdmin) | none | [PLANNED]{.badge .planned} |
-| TASK-015 | Service-request submit-only workflow | none (single chain for all categories) | [PLANNED]{.badge .planned} |
+| BRD-REQ-001 / PRD-FR-001 | Employee request submission | `RequestsController.Create`, `WorkflowService.SubmitAsync`, `App.tsx` form | [IMPLEMENTED]{.badge .ok} |
+| BRD-REQ-002 / PRD-FR-002 | Review, approval, rejection, fulfilment, tracking | `Decide`, `Fulfil`, `RetryRouting`, `List`, `GetById` | [IMPLEMENTED]{.badge .ok} (API) · [PARTIAL]{.badge .partial} (no approver UI) |
+| BRD-REQ-003 / PRD-FR-003 | Role permissions for six roles | `Program.cs` policies, Auditor write-block, `RoleScopeTests`, `EndpointAuthorizationTests` | [IMPLEMENTED]{.badge .ok} (several mappings *(proposed)*) |
+| BRD-REQ-004 / PRD-FR-004 | Notifications | `NotificationService`, `EmailTemplates`, `GraphEmailSender`, `NotificationReconciliationService` | [IMPLEMENTED]{.badge .ok} (DEV needs Graph permission) |
+| BRD-REQ-009 / PRD-NFR-005 | Request history and audit information | `RequestAudit` (old/new status) in the same `SaveChanges`; paged `AuditController` | [IMPLEMENTED]{.badge .ok} |
+| TASK-012 | Request-type management (AppAdmin) | `RequestTypesController`, `AdminRequestTypesPage.tsx` | [IMPLEMENTED]{.badge .ok} |
+| TASK-015 | Service-request submit-only workflow | Service requests stop at *Submitted*; onward flow open | [PARTIAL]{.badge .partial} |
 
 Table: Table 6.1 — Functional requirement traceability
 
@@ -80,11 +82,11 @@ Table: Table 6.1 — Functional requirement traceability
 
 | NFR | Requirement | Evidence | Status |
 |---|---|---|---|
-| NFR-001 | Every API endpoint requires a valid Entra ID token; no anonymous endpoint | `[Authorize]` on controllers; **`/health` is `AllowAnonymous()`** (`Program.cs`) and tested as anonymous | [PARTIAL]{.badge .partial} |
-| NFR-002 | Role-based authorization enforced server-side | Policies + controller checks; integration test asserts 401 without a token | [IMPLEMENTED]{.badge .ok} |
-| NFR-003 | Secrets via managed identity and Key Vault; none in source control | Key Vault config provider with `DefaultAzureCredential`; placeholders in `appsettings.json`; gitleaks | [IMPLEMENTED]{.badge .ok} |
-| NFR-004 | Users reach Azure SQL only through the API (EF Core) | SPA has no DB access; SQL accessed by API via managed identity | [IMPLEMENTED]{.badge .ok} (network still public, §20) |
-| NFR-005 | One audit record per status change with actor, timestamp, old and new status | Audit row per action has actor and timestamp, but stores `stage=…;approved=…` not old/new status | [PARTIAL]{.badge .partial} |
+| NFR-001 | Every API endpoint requires a valid Entra ID token; no anonymous endpoint | Fallback policy requires an authenticated user; `/health` uses `RequireAuthorization()`; `EndpointAuthorizationTests` checks every endpoint | [IMPLEMENTED]{.badge .ok} |
+| NFR-002 | Role-based authorization enforced server-side | Policies, ownership filter, Auditor write-block; `RoleScopeTests` | [IMPLEMENTED]{.badge .ok} |
+| NFR-003 | Secrets via managed identity and Key Vault; none in source control | User-assigned identity; Key Vault provider with `DefaultAzureCredential`; Entra-only SQL (no password); gitleaks | [IMPLEMENTED]{.badge .ok} |
+| NFR-004 | Users reach Azure SQL only through the API (EF Core) | SQL public access disabled; reachable only through a private endpoint from the API's VNet | [IMPLEMENTED]{.badge .ok} |
+| NFR-005 | One audit record per status change with actor, timestamp, old and new status | `RequestAudit` written in the same `SaveChanges` as each transition; `RelationalAtomicityTests` | [IMPLEMENTED]{.badge .ok} |
 
 Table: Table 7.1 — Non-functional requirements and compliance
 

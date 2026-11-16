@@ -7,17 +7,20 @@ flowchart TB
     C01["C-01 React SPA"]:::c
     C02["C-02 MSAL auth module"]:::c
     C03["C-03 API host & pipeline"]:::c
-    C04["C-04 AccessRequestsController"]:::c
-    C05["C-05 AuditController"]:::c
-    C06["C-06 WorkflowService"]:::c
-    C07["C-07 SmartServeDbContext"]:::c
-    C08["C-08 Health endpoint"]:::c
-    C09["C-09 Test suite (xUnit)"]:::c
+    C04["C-04 RequestsController"]:::c
+    C05["C-05 RequestTypesController"]:::c
+    C06["C-06 Audit + SecurityReview controllers"]:::c
+    C07["C-07 WorkflowService"]:::c
+    C08["C-08 DbContext + migration"]:::c
+    C09["C-09 Notification services"]:::c
+    C10["C-10 Directory service"]:::c
+    C11["C-11 Health endpoint"]:::c
+    C12["C-12 Test suite (xUnit)"]:::c
   end
   subgraph INF["Infrastructure & delivery"]
     I01["I-01 Bicep template"]:::i
-    I02["I-02 CI workflow"]:::i
-    I03["I-03 Security workflow"]:::i
+    I02["I-02 setup-dev.ps1"]:::i
+    I03["I-03 CI + security workflows"]:::i
     I04["I-04 Deploy DEV / STAGING / PROD"]:::i
   end
   subgraph PLT["Agentic SDLC platform"]
@@ -31,11 +34,13 @@ flowchart TB
     P08["P-08 SDLC workflows (gate, run, review, feedback)"]:::p
   end
   C01 --> C02
-  C01 --> C03 --> C04 & C05 & C08
-  C04 --> C06
-  C04 & C05 & C08 --> C07
-  C09 -.-> C03
-  I02 -.-> C09
+  C01 --> C03 --> C04 & C05 & C06 & C11
+  C04 --> C07 --> C09 --> C10
+  C07 --> C10
+  C04 & C05 & C06 & C07 & C09 & C11 --> C08
+  C12 -.-> C03
+  I03 -.-> C12
+  I02 -.->|"one-time"| I04
   I04 --> I01
   P08 --> P01 --> P04 & P02 & P05 & P03 & P06
   P05 --> P07

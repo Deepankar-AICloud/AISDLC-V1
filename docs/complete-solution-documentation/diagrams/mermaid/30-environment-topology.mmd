@@ -2,10 +2,10 @@ flowchart LR
   classDef conf fill:#E8F5E9,stroke:#2E7D32,color:#1B1B1B
   classDef rec fill:#FFF4E5,stroke:#C25E00,stroke-dasharray:4 3,color:#1B1B1B
 
-  L["LOCAL (confirmed)<br/>dotnet run → Kestrel, EF In-Memory<br/>Vite :5173 proxy → :5000<br/>Swagger UI (Development)"]:::conf
-  D["DEV (confirmed)<br/>RG via secret AZURE_RESOURCE_GROUP_DEV<br/>B1 plan, Basic SQL, LAW 30 d<br/>auto on push to main"]:::conf
+  L["LOCAL (confirmed)<br/>dotnet run → Kestrel, EF In-Memory,<br/>in-memory directory, no e-mail<br/>Vite :5173 proxy → :5000, Swagger"]:::conf
+  D["DEV (deployed)<br/>rg-aisdlc-v1, West US 3<br/>B1 plan, Basic SQL, private endpoints<br/>auto on push to main (src/**, infra/**)"]:::conf
   T["TEST (not defined in workspace)"]:::rec
-  S["STAGING (confirmed)<br/>'staging' slot of API app<br/>GitHub env 'staging', ZAP baseline<br/>staging.parameters.json not used by deploy-staging.yml"]:::conf
-  P["PRODUCTION (confirmed)<br/>P1v3 plan, S1 zone-redundant SQL, ZRS storage<br/>LAW 90 d, env 'production' reviewers<br/>front_door_enabled: true in config only"]:::conf
+  S["STAGING (not set up)<br/>'staging' slot of the production API app<br/>skipped until STAGING_ENABLED = true<br/>ZAP baseline"]:::rec
+  P["PRODUCTION (not set up)<br/>P1v3 plan, S1 zone-redundant SQL, ZRS storage<br/>LAW 90 d, env 'production' reviewers<br/>front_door_enabled: true in config only"]:::rec
   L --> D --> S --> P
   D -.-> T -.-> S

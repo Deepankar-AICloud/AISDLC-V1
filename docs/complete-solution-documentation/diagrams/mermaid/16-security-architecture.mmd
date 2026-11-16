@@ -8,29 +8,29 @@ flowchart TB
     T2["UseHttpsRedirection"]:::ctl
   end
   subgraph Identity["Identity & access"]
-    I1["Entra ID JWT bearer validation"]:::ctl
-    I2["Role policies (server-side)"]:::ctl
-    I3["Ownership + stage + no-self-approval checks"]:::ctl
-    I4["Managed Identity: API → Key Vault, Storage, SQL"]:::ctl
+    I1["Entra ID sign-in (SPA redirect) + JWT validation"]:::ctl
+    I2["Fallback + role policies (server-side)"]:::ctl
+    I3["Own-request filter · Auditor write-block"]:::ctl
+    I4["User-assigned MI: API → SQL (Entra-only), Key Vault, Graph"]:::ctl
+    G0["Decision not limited to the routed manager"]:::gap
   end
   subgraph AppSec["Application"]
     A1["DataAnnotations max-length validation"]:::ctl
     A2["Security headers: nosniff, DENY, no-referrer"]:::ctl
-    A3["CORS allow-list from configuration"]:::ctl
-    A4["Audit trail with correlation id"]:::ctl
+    A3["CORS for the deployed web origin"]:::ctl
+    A4["Transactional audit (old/new status) · concurrency tokens"]:::ctl
     G1["No rate limiting · no CSP/HSTS header<br/>no global exception handler"]:::gap
   end
-  subgraph Data["Data & secrets"]
-    D1["Key Vault (RBAC, soft delete)"]:::ctl
-    D2["Blob public access disabled"]:::ctl
-    G2["SQL public network + 0.0.0.0 'Azure services' rule<br/>SQL password admin (no Entra admin configured)"]:::gap
+  subgraph Data["Data, secrets & network"]
+    D1["Key Vault (RBAC, soft delete, private endpoint)"]:::ctl
+    D2["SQL: public access disabled, private endpoint, no password"]:::ctl
+    D3["VNet integration, private DNS"]:::ctl
   end
   subgraph Supply["Supply chain / DevSecOps"]
     S1["CodeQL default setup (gates Agentic SDLC)"]:::ctl
     S2["gitleaks secret scan"]:::ctl
-    S3["OWASP ZAP baseline (staging)"]:::ctl
     S4["OIDC to Azure (no stored cloud secrets)"]:::ctl
-    G3["Dependency scans non-blocking · no Dependabot<br/>comment-body script injection in feedback-handler.yml"]:::gap
+    G3["Dependency scans non-blocking · no Dependabot · ZAP not running (staging off)<br/>comment-body script injection in feedback-handler.yml"]:::gap
   end
   Edge --> Identity --> AppSec --> Data
   Supply -.-> AppSec

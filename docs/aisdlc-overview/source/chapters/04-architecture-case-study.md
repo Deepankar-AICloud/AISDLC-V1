@@ -9,7 +9,7 @@
 | Control plane | Python 3.13 orchestrator, model router, quality control, readiness and contract gates, telemetry, traceability |
 | Configuration | YAML: agents, models and routing, quality gates, artifact contracts, readiness rules, budgets, environments, impact rules |
 | Code security | GitHub CodeQL, secret scanning (gitleaks), OWASP ZAP |
-| Target platform (reference) | Azure App Service with deployment slots, Azure SQL, Key Vault, Application Insights, Bicep infrastructure as code, GitHub OIDC |
+| Target platform (reference) | Azure App Service with deployment slots and network integration, Azure SQL and Key Vault behind private endpoints, managed identities, Application Insights, Bicep infrastructure as code, GitHub OIDC |
 
 Table: Table 10.1 — Technology stack
 
@@ -47,6 +47,7 @@ Model names are configuration, not code, and change as the provider's catalogue 
 | NFRs | `docs/nfr/NFR-23.md` | 5 verifiable NFRs; performance, retention and DR recorded as open questions rather than invented | PR #30 |
 | Task plan | `docs/tasks/TASK-23.md` | 16 tasks, 16 unit-test tasks, 3 functional-test tasks | PR #32 |
 | Code | `src/backend`, `src/frontend`, `infra` | 55 files changed (+8,531 / −513 lines), built and tested by the pipeline | PR #34 |
+| DEV environment | Azure App Service, Azure SQL, Key Vault, private networking | Provisioned and deployed by the CI/CD pipeline after the code merge | Pipeline run |
 
 Table: Table 11.1 — SmartServe artifacts
 
@@ -57,7 +58,17 @@ Table: Table 11.1 — SmartServe artifacts
 - **People stayed in control.** Model choices were confirmed for high-impact stages, and every artifact was merged only after pull-request approval.
 - **The output is consistent.** Every artifact follows its contract and carries traceable IDs back to the original requirement.
 
-**Next steps for SmartServe** are the standard verification and release stages: CI, security scanning, DEV and STAGING deployment with DAST, and an approved production promotion. These are covered in the companion *SmartServe — Complete Application Solution Document*.
+**From merged code to a running application.** After the code stage, AISDLC hands over to the deterministic CI/CD pipeline. For SmartServe, CI and secret scanning passed, and the pipeline provisioned and deployed the DEV environment on Azure: App Service with network integration, Azure SQL and Key Vault reachable only through private endpoints, managed identities instead of passwords, and Microsoft Entra ID sign-in. The generated code arrived with 32 passing backend tests and 5 frontend tests.
+
+**What the first deployment taught us.** Deploying into a real enterprise subscription and tenant surfaced issues that unit and integration tests could not catch:
+
+- an organisational policy that disables public access to data services, which required private networking;
+- the tenant's consent policy, which required pre-authorizing the web app on the API;
+- a sign-in step and a configuration placeholder missing from the generated frontend and settings.
+
+Each was fixed through normal reviewed changes, and the setup and pipeline now handle them automatically. Two items still need people with administrative rights: granting the application's identity its Microsoft Graph permissions for e-mail and manager lookup, and deciding the staging and production design.
+
+**Next steps for SmartServe:** grant the Graph permissions, set up STAGING (with DAST) and PRODUCTION (with mandatory approval), and build the remaining approver and auditor screens. Details are in the companion *SmartServe — Complete Application Solution Document*.
 
 # Benefits and Value {#benefits}
 

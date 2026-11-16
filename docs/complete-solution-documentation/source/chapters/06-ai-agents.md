@@ -17,6 +17,10 @@ The SmartServe **runtime** uses no AI services: the API and SPA make no model ca
 
 ![Figure 20 — Agentic SDLC state machine (`scripts/sdlc/orchestrator/states.py`)](diagrams/rendered/26-sdlc-state-machine.png)
 
+**Hand-off after the code stage.** The states after `CODE_APPROVED` (`DEV_DEPLOYMENT`, `FUNCTIONAL_TESTING`, `PERFORMANCE_TESTING`, `STAGING_DEPLOYMENT`, `SECURITY_TESTING`, `RELEASE_*`, `COMPLETED`) are listed in `PIPELINE_STATES`. They are owned by the deterministic CI/CD workflows, not by an orchestrator agent. When the orchestrator reaches one of them it returns `HANDED_OFF` (exit code 0), and `agentic-sdlc.yml` posts an *"Agentic generation stages complete"* comment on the issue instead of a failure. Before this change, the orchestrator reported a misleading *"FUNCTIONAL_TESTING paused — QC None"*.
+
+**Code-stage commits run CI.** Artifact commits for document stages keep `[skip ci]`, but the code stage's commit no longer carries it. Its squash merge therefore triggers CI, secret scanning and the DEV deployment. The issue #23 code merge (`3e2b754`) still carried `[skip ci]`; CI and the DEV deployment were run afterwards on commit `2c4675e`.
+
 ## Agent catalogue
 
 Seven agents are driven by the orchestrator (mapped in `STATE_TO_AGENT`). The other five are configured in `config/agents.yml` but realised by deterministic tools or workflows rather than orchestrator stages.

@@ -8,8 +8,8 @@ flowchart LR
   PR --> SECS["security.yml<br/>gitleaks"]:::sec
   PR --> CQ["CodeQL default setup"]:::sec
   CI & SECS & CQ --> MERGE["Merge to main<br/>(branch-protection rules: not confirmed from workspace)"]:::gate
-  MERGE --> DEV["deploy-dev.yml<br/>OIDC → Bicep → publish API → deploy API & web<br/>→ /health smoke"]:::env
-  DEV -->|"workflow_run success"| STG["deploy-staging.yml<br/>env 'staging' · publish API → staging slot<br/>→ /health smoke → OWASP ZAP baseline"]:::env
+  MERGE --> DEV["deploy-dev.yml (env 'dev', live)<br/>OIDC → Bicep (outputs: app names, URLs)<br/>→ publish API → build SPA with VITE_* → deploy both<br/>→ smoke: API up (401/200), web 200"]:::env
+  DEV -->|"workflow_run success<br/>and STAGING_ENABLED = true"| STG["deploy-staging.yml (not set up)<br/>publish API → staging slot<br/>→ /health smoke → OWASP ZAP baseline"]:::env
   STG --> APPROVE{"Manual dispatch<br/>confirm = 'promote'<br/>+ 'production' environment reviewers"}:::gate
-  APPROVE --> PROD["deploy-production.yml<br/>staging health → slot swap → prod /health<br/>→ deployment_status → release evidence (90 d)"]:::env
+  APPROVE --> PROD["deploy-production.yml (not set up)<br/>staging health → slot swap → prod /health<br/>→ deployment_status → release evidence (90 d)"]:::env
   PROD -->|"health failed"| FAIL["DEPLOYMENT_FAILED<br/>manual swap-back (no auto rollback)"]:::gate

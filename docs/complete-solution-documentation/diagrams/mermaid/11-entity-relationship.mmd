@@ -1,43 +1,49 @@
 erDiagram
-  AccessRequest ||--o{ ApprovalStep : "has (cascade delete)"
-  AccessRequest ||--o{ RequestComment : "has (cascade delete)"
-  AccessRequest |o..o{ AuditEntry : "referenced by AccessRequestId (no FK navigation)"
+  RequestType ||--o{ PortalRequest : "FK RequestTypeId (restrict delete)"
+  PortalRequest |o..o{ RequestAudit : "PortalRequestId (no FK constraint)"
+  PortalRequest |o..o{ NotificationRecord : "PortalRequestId (no FK constraint)"
 
-  AccessRequest {
+  RequestType {
     guid Id PK
-    string Title "max 200"
-    string Description "max 4000"
-    string Category "enum stored as string"
-    string Status "enum stored as string, indexed"
-    string RequesterId "max 200, indexed"
-    string AssignedToId "nullable"
-    bool RequiresSecurityReview
+    string Kind "Access or Service, as string"
+    string Name "max 200"
+    string Description "max 2000, nullable"
+    bool IsActive "indexed with Kind"
     datetimeoffset CreatedAt
     datetimeoffset UpdatedAt "nullable"
-    datetimeoffset ClosedAt "nullable"
+    datetimeoffset DeactivatedAt "nullable, one-way"
   }
-  ApprovalStep {
+  PortalRequest {
     guid Id PK
-    guid AccessRequestId FK
-    string Stage "Manager | Security | IT"
-    string DecidedById "nullable"
-    bool Approved "nullable"
-    string Notes "max 2000"
-    datetimeoffset DecidedAt "nullable"
-  }
-  RequestComment {
-    guid Id PK
-    guid AccessRequestId FK
-    string AuthorId "max 200"
-    string Body "max 4000"
+    string Kind "indexed"
+    guid RequestTypeId FK "indexed"
+    string Title "max 200"
+    string Description "max 4000"
+    string Status "indexed"
+    string RequesterId "max 200, indexed"
+    string ManagerId "nullable, indexed"
+    string FulfilledById "nullable"
     datetimeoffset CreatedAt
+    datetimeoffset UpdatedAt "nullable"
+    guid RowVersion "concurrency token"
   }
-  AuditEntry {
+  RequestAudit {
     long Id PK
-    guid AccessRequestId "nullable, indexed"
+    guid PortalRequestId "indexed"
     string ActorId "max 200"
-    string Action "max 100"
-    string Details "max 2000"
+    string OldStatus "nullable"
+    string NewStatus
     datetimeoffset Timestamp "indexed"
-    string CorrelationId "max 100"
+  }
+  NotificationRecord {
+    guid Id PK
+    guid PortalRequestId "indexed"
+    string Template
+    string RecipientRole "Requester or Manager"
+    string RecipientAddress "max 320, nullable"
+    string Status "Pending, Accepted, NotSent, Failed"
+    string Reason "max 200, nullable"
+    datetimeoffset LeaseExpiresAt "indexed with Status"
+    datetimeoffset CompletedAt "nullable"
+    guid RowVersion "concurrency token"
   }

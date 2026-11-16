@@ -6,17 +6,19 @@ sequenceDiagram
   participant A as SmartServe.Api
   Note over B: auth.ts builds PublicClientApplication<br/>authority login.microsoftonline.com/{tenant}<br/>cache: sessionStorage
   U->>B: Open portal
-  B->>B: getAllAccounts()
-  alt Account already cached in session
-    B->>E: acquireTokenSilent(scope = VITE_API_SCOPE)
-    E-->>B: Access token (JWT)
-    B->>A: GET /api/requests + Authorization: Bearer
-    A->>E: Fetch signing keys / metadata (Microsoft.Identity.Web)
-    A->>A: Validate issuer, audience, signature, lifetime
-    A-->>B: 200 OK
-  else No account (sign-in UI not implemented)
-    B->>A: GET /api/requests (no Authorization header)
-    A-->>B: 401 Unauthorized
-    B-->>U: Error shown in alert box
+  B->>B: MsalAuthenticationTemplate checks for an account
+  alt No account yet
+    B->>E: loginRedirect(scope = api://{api-client-id}/access_as_user)
+    U->>E: Sign in (SPA pre-authorized on the API, no consent prompt)
+    E-->>B: Redirect back with authorization code (PKCE) → tokens
   end
-  Note over B,E: Gap: no loginRedirect/loginPopup call exists in src/frontend
+  B->>E: acquireTokenSilent(scope)
+  alt Silent renewal needs interaction
+    E-->>B: InteractionRequiredAuthError
+    B->>E: acquireTokenRedirect(scope)
+  end
+  E-->>B: Access token (JWT, v2, aud = API client ID, roles claim)
+  B->>A: GET /api/requests + Authorization: Bearer
+  A->>E: Fetch signing keys / metadata (Microsoft.Identity.Web)
+  A->>A: Validate issuer, audience, signature, lifetime, then evaluate policies
+  A-->>B: 200 OK (own requests)

@@ -16,10 +16,15 @@ stateDiagram-v2
   TASK_APPROVED --> CODE_GENERATION
   CODE_GENERATION --> CODE_APPROVED
   CODE_APPROVED --> DEV_DEPLOYMENT
-  DEV_DEPLOYMENT --> RELEASE_APPROVAL: functional, perf, staging, security stages (not agent-driven)
+  DEV_DEPLOYMENT --> RELEASE_APPROVAL: CI/CD pipeline stages (orchestrator returns HANDED_OFF)
   RELEASE_APPROVAL --> PRODUCTION_DEPLOYMENT
   PRODUCTION_DEPLOYMENT --> COMPLETED
   COMPLETED --> [*]
+
+  note right of DEV_DEPLOYMENT
+    PIPELINE_STATES: owned by GitHub Actions
+    (deploy-dev, staging, production), not by an agent
+  end note
 
   state "Pause / fail-safe states (any generation stage)" as P {
     AWAITING_MODEL_CONFIRMATION

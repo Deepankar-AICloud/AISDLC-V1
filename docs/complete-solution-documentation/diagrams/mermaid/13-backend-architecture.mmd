@@ -7,10 +7,11 @@ flowchart TB
   subgraph Startup["Program.cs — startup"]
     K["Key Vault config provider<br/>if KeyVault:Uri set (DefaultAzureCredential)"]:::cfg
     T["AddApplicationInsightsTelemetry"]:::cfg
-    AN["AddMicrosoftIdentityWebApi(AzureAd)"]:::cfg
-    AZ["Policies: CanCreateRequest · CanApprove<br/>CanAudit · CanAdminister"]:::cfg
-    DBC["DbContext: SQL Server or In-Memory"]:::cfg
-    MIG["Migrate() if relational<br/>EnsureCreated() otherwise"]:::cfg
+    AN["AddMicrosoftIdentityWebApi(AzureAd)<br/>or TestAuthHandler in Testing"]:::cfg
+    AZ["Fallback policy + 9 named policies"]:::cfg
+    DBC["IDbContextFactory: SQL Server<br/>(In-Memory only in Development/Testing)"]:::cfg
+    SVC["Graph or in-memory directory / e-mail<br/>Workflow + Notification services<br/>reconciliation hosted service"]:::cfg
+    MIG["MigrateAsync · seed request types<br/>· reconcile notifications"]:::cfg
   end
   subgraph Pipeline["Request pipeline (order)"]
     SW["Swagger (Development only)"]:::mw
@@ -18,19 +19,24 @@ flowchart TB
     SH["Security headers<br/>nosniff · DENY · no-referrer"]:::mw
     CO["UseCors('spa')"]:::mw
     AU["UseAuthentication"]:::mw
+    AW["Auditor write-block<br/>403 on POST/PUT/PATCH/DELETE"]:::mw
     AO["UseAuthorization"]:::mw
   end
   subgraph Endpoints["Endpoints"]
-    C1["AccessRequestsController<br/>api/requests"]:::app
-    C2["AuditController<br/>api/audit"]:::app
-    H["/health (anonymous)"]:::app
+    C1["RequestsController<br/>api/requests"]:::app
+    C2["RequestTypesController<br/>api/request-types"]:::app
+    C3["AuditController · SecurityReviewController<br/>api/audit · api/security"]:::app
+    H["/health (requires a token)"]:::app
   end
-  WF["WorkflowService (scoped)"]:::app
+  WF["WorkflowService"]:::app
+  NS["NotificationService"]:::app
   CTX[("SmartServeDbContext")]:::data
 
-  K --> T --> AN --> AZ --> DBC --> MIG
-  SW --> HR --> SH --> CO --> AU --> AO --> C1 & C2 & H
-  C1 --> WF
-  C1 --> CTX
+  K --> T --> AN --> AZ --> DBC --> SVC --> MIG
+  SW --> HR --> SH --> CO --> AU --> AW --> AO --> C1 & C2 & C3 & H
+  C1 --> WF --> NS
+  WF --> CTX
+  NS --> CTX
   C2 --> CTX
+  C3 --> CTX
   H --> CTX

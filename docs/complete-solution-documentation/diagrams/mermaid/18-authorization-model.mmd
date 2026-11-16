@@ -11,29 +11,38 @@ flowchart LR
   AUD["Auditor"]:::role
 
   P1["CanCreateRequest"]:::pol
+  P0["CanViewOwnRequests"]:::pol
   P2["CanApprove"]:::pol
-  P3["CanAudit"]:::pol
-  P4["CanAdminister<br/>(defined, not used by any endpoint)"]:::pol
+  P3["CanFulfil · CanRetryRouting"]:::pol
+  P4["CanAdminister"]:::pol
+  P5["CanAudit"]:::pol
+  P6["CanSecurityReview"]:::pol
+  BLK["Auditor write-block<br/>(middleware)"]:::pol
 
-  A1["Create request"]:::act
-  A2["Decide (stage-matched role)"]:::act
-  A3["Read audit trail"]:::act
-  A4["List / read all requests"]:::act
-  A5["List / read own requests only"]:::act
+  A1["Submit request"]:::act
+  A0["List / read own requests"]:::act
+  A2["Approve / reject access request"]:::act
+  A3["Fulfil · retry routing"]:::act
+  A4["Manage request types"]:::act
+  A5["Read all requests + history"]:::act
+  A6["Read access requests"]:::act
 
   EMP --> P1
+  EMP --> P0
   MGR --> P1
-  SEC --> P1
   ITA --> P1
   APA --> P1
   MGR --> P2
-  SEC --> P2
-  ITA --> P2
-  AUD --> P3
-  APA --> P3
+  ITA --> P3
   APA --> P4
+  APA --> P5
+  AUD --> P5
+  AUD --> BLK
+  SEC --> P6
   P1 --> A1
+  P0 --> A0
   P2 --> A2
   P3 --> A3
-  MGR & SEC & ITA & APA & AUD --> A4
-  EMP --> A5
+  P4 --> A4
+  P5 --> A5
+  P6 --> A6

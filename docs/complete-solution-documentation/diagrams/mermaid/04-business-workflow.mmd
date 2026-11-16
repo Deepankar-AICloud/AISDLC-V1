@@ -5,24 +5,25 @@ flowchart TD
   classDef gap fill:#FFF4E5,stroke:#C25E00,stroke-dasharray:4 3,color:#1B1B1B
 
   S(["Employee needs IT access or service"]):::term
-  C["Submit request<br/>title, description, category"]:::human
-  R{"Category security-sensitive?<br/>Production, Database, Azure, VPN"}:::sys
+  C["Submit request<br/>kind, request type, title, description"]:::human
+  K{"Kind?"}:::sys
+  SV(["Service request: stays Submitted<br/>(onward workflow is an open question)"]):::gap
+  MG{"Manager found<br/>in Entra ID?"}:::sys
+  RT["IT admin retries routing"]:::human
   M["Manager decision"]:::human
-  SR["Security reviewer decision"]:::human
-  IT["IT admin processing decision"]:::human
-  P["Status: Provisioned"]:::sys
-  CF["Employee confirms provisioning"]:::human
-  CL(["Status: Closed"]):::term
+  AP["Status: Approved"]:::sys
+  IT["IT admin fulfils"]:::human
+  FU(["Status: Fulfilled"]):::term
   RJ(["Status: Rejected"]):::term
-  N["Notifications<br/>NOT implemented in current code"]:::gap
+  N["E-mail notifications<br/>requester at each step, manager on routing"]:::sys
 
-  S --> C --> R
-  R -->|"flag set at creation"| M
-  M -->|"approve + sensitive"| SR
-  M -->|"approve + not sensitive"| IT
-  SR -->|approve| IT
-  IT -->|approve| P --> CF --> CL
+  S --> C --> K
+  K -->|Service| SV
+  K -->|Access| MG
+  MG -->|"yes: UnderReview"| M
+  MG -->|"no: stays Submitted"| RT --> MG
+  M -->|approve| AP --> IT --> FU
   M -->|reject| RJ
-  SR -->|reject| RJ
-  IT -->|reject| RJ
   C -.-> N
+  M -.-> N
+  IT -.-> N

@@ -4,26 +4,27 @@ flowchart LR
   classDef store fill:#F3E5F5,stroke:#6A1B9A,color:#1B1B1B
   classDef out fill:#FFF8E1,stroke:#C19C00,color:#1B1B1B
 
-  IN1["CreateRequestDto<br/>Title ≤200, Description ≤4000, Category"]:::in
-  IN2["DecisionDto<br/>Approved, Notes ≤2000"]:::in
-  IN3["CommentDto<br/>Body ≤4000"]:::in
+  IN1["CreateRequestDto<br/>Kind, RequestTypeId, Title ≤200, Description ≤4000"]:::in
+  IN2["DecisionDto<br/>Approved, Notes ≤2000 (not stored)"]:::in
+  IN3["Create / UpdateRequestTypeDto<br/>Kind, Name ≤200, Description ≤2000"]:::in
   V["Model validation<br/>[ApiController] DataAnnotations"]:::proc
-  Z["Authorization<br/>policies + ownership + stage"]:::proc
-  W["WorkflowService<br/>RequiresSecurityReview / Advance / CurrentStage"]:::proc
-  T1[("AccessRequests")]:::store
-  T2[("Approvals")]:::store
-  T3[("Comments")]:::store
-  T4[("AuditEntries<br/>append-only by code")]:::store
+  Z["Authorization<br/>policies + own-request filter + Auditor write-block"]:::proc
+  W["WorkflowService<br/>Submit / Route / Decide / Fulfil"]:::proc
+  NS["NotificationService<br/>Graph sendMail"]:::proc
+  T1[("PortalRequests")]:::store
+  T2[("RequestTypes")]:::store
+  T3[("NotificationRecords")]:::store
+  T4[("RequestAudits<br/>same transaction as status")]:::store
   O1["RequestResponse JSON"]:::out
-  O2["Audit list (≤500, newest first)"]:::out
+  O2["Paged audit and security-review results"]:::out
 
   IN1 --> V --> Z --> W --> T1
   IN2 --> V
   IN3 --> V
   Z --> T2
-  Z --> T3
-  T1 --> T4
-  T2 --> T4
-  T3 --> T4
+  W --> T4
+  W --> NS --> T3
+  T2 -. "active type check" .-> W
   T1 --> O1
+  T1 --> O2
   T4 --> O2

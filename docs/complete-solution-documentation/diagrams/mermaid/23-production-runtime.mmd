@@ -8,14 +8,18 @@ flowchart LR
   P["API App — production slot<br/>(swapped in from 'staging')"]:::run
   S["API App — 'staging' slot<br/>previous production build after swap"]:::run
   E["Entra ID"]:::dep
-  D[("Azure SQL SmartServeDb (S1, zone-redundant)")]:::dep
-  K["Key Vault"]:::dep
+  G["Microsoft Graph"]:::dep
+  D[("Azure SQL SmartServeDb (S1, zone-redundant)<br/>private endpoint")]:::dep
+  K["Key Vault (private endpoint)"]:::dep
   A["App Insights → Log Analytics (90 d)"]:::dep
 
   U -->|"1 load SPA"| W
   U -->|"2 sign-in / token"| E
   U -->|"3 REST + Bearer"| P
   P --> D
+  P --> G
   P -.-> K
   P -.-> A
   S -.->|"swap back = rollback path"| P
+  N["Design only — production is not set up yet"]:::dep
+  N -.-> P
