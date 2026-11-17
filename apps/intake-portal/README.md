@@ -19,8 +19,11 @@ apps/intake-portal/
   backend/    FastAPI app (app/), tests (tests/), pinned locks, scripts/
   frontend/   React + TypeScript (src/), Playwright e2e (e2e/)
   docs/       architecture.md, design-note.md
-  Dockerfile  .env.example
+  Dockerfile  Dockerfile.studio  .env.example
 ```
+
+Looking for a simple "sign in and generate documents" page with no GitHub accounts? See
+[AISDLC Studio](#aisdlc-studio-shared-sign-in-no-github).
 
 ## Quick start (local, no GitHub needed)
 
@@ -46,6 +49,194 @@ Settings come only from environment variables (see [`.env.example`](.env.example
 
 Sign in as a development user (alice = Requester, bob = Reviewer and code owner, erin = production
 reviewer), then use **Account → Connect GitHub** and pick the matching fake GitHub account.
+
+## Shared login with the original GitHub Actions pipeline
+
+The original, colourful portal also supports **username `admin` + a server-configured password**.
+This is separate from Studio: it still creates a GitHub issue, adds `sdlc:start`, and follows the existing
+GitHub Actions workflows. It does not run the Studio generator locally.
+
+- The shared account is a **Requester**, not a privileged administrator. It can upload/paste requirements,
+  submit issues and view its generated artifacts and status without a personal Microsoft/GitHub account.
+- Named reviewers use **Sign in with GitHub** (or Microsoft if configured) for answers, model decisions,
+  reviews and approvals. Repository access, CODEOWNERS, QC and production approval gates are unchanged.
+- A personal GitHub account cannot be linked to the shared login. Everyone using that login can see its
+  requests; this is not customer/tenant isolation. Do not use it for unrelated customers' confidential data.
+- Password checks happen on the backend. Signed HttpOnly cookies, CSRF checks and sign-in rate limiting
+  apply. No GitHub credentials or configured password are returned to the frontend.
+
+### Local login with a real GitHub backend
+
+First configure the GitHub App server-side as described below: `GITHUB_REPOSITORY`, `GITHUB_APP_ID`,
+`GITHUB_APP_PRIVATE_KEY` or `GITHUB_APP_PRIVATE_KEY_PATH`, `GITHUB_APP_CLIENT_ID`, and
+`GITHUB_APP_CLIENT_SECRET`. Install the App on the target repository. The installation ID is optional
+(looked up if omitted). The workflows and repository protections must also be configured.
+**Changing the login does not replace this backend authentication.** Missing settings stop startup;
+there is no fallback to fake GitHub.
+
+After those environment variables are available to the process:
+
+```powershell
+# Build the existing portal UI from the repository root.
+Set-Location apps\intake-portal\frontend
+npm run build
+Set-Location ..\backend
+$env:APP_ENV = 'development'
+$env:AUTH_MODE = 'password'
+$env:PORTAL_ADMIN_PASSWORD = 'admin'  # localhost-only demo; never deploy this password
+$env:BIND_HOST = '127.0.0.1'
+$env:PUBLIC_BASE_URL = 'http://localhost:8000'
+$env:GITHUB_MODE = 'app'
+$env:GITHUB_SIGNIN_ENABLED = 'true'
+$env:SERVE_FRONTEND_DIR = (Resolve-Path ..\frontend\dist).Path
+# Use a separate data directory from the fake-GitHub demo and Studio.
+$env:DATA_DIR = '.\var\github-portal'
+$env:DATABASE_URL = 'sqlite:///./var/github-portal/portal.db'
+.\.venv\Scripts\python.exe -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
+```
+
+Stop only the old original-portal server if port 8000 is occupied; **do not stop Studio on port 8001**.
+Open http://localhost:8000 and sign in with `admin / admin`. The GitHub App callback for reviewers is
+`http://localhost:8000/auth/github/callback`. Set `DEFAULT_REVIEWERS` if needed so a named reviewer can
+handle the first model/information gate before a stage PR exists.
+
+For hosted use, `APP_ENV=production` requires a password of at least 12 characters, HTTPS, a 32+ character
+`SESSION_SECRET`, GitHub secrets, a token-encryption key, and process-isolated extraction. Entra credentials
+are optional in password mode when GitHub reviewer sign-in is enabled. Use a strong unique password and
+restrict ingress; do not expose `admin/admin` publicly. Supply secrets through the host's secure settings,
+not this example file. Without `SESSION_SECRET` in local password mode, restarting invalidates sessions.
+
+Validation: `pytest tests/test_password_signin.py` covers the login, shared/named identity boundary, and
+the real App-authentication/API path with a mocked GitHub HTTP transport (not a live Actions run).
+For the isolated browser test (fake GitHub only):
+
+```powershell
+# From frontend after npm run build:
+$env:E2E_AUTH_MODE = 'password'
+npm run e2e -- password-login.spec.ts
+Remove-Item Env:\E2E_AUTH_MODE
+```
+
+## AISDLC Studio (shared sign-in, no GitHub)
+
+A separate, self-contained web app (`backend/app/studio`) for teammates and customers who just want to
+paste or upload a requirement and get documents and code. There is one shared username/password, no
+GitHub account, no issues and no pull requests.
+
+1. Sign in, create a requirement (title + text and/or files: PDF, DOCX, Markdown, text…).
+2. For each stage — **BRD → PRD → Epics & stories → Architecture → NFR → Tasks → Code** — Studio
+   proposes a model, runs the matching AISDLC agent and shows the document with its QC score.
+3. **Approve & continue**, **Request changes** (the stage is regenerated with your notes) or answer the
+   agent's questions when it needs more information. Nothing advances without an approval, and a stage
+   that fails QC cannot be approved (retry or request changes instead).
+4. Read every document in the browser or **Download bundle** (ZIP of all artifacts and generated code).
+
+How it works: each requirement gets its own shallow `git clone` of this repository under `DATA_DIR`.
+The application template comes from committed `HEAD`; the generator is copied from the server's
+`scripts/sdlc` directory when the workspace is created, including local runtime fixes. Existing jobs
+retain their captured version. Studio runs the real orchestrator (`python -m scripts.sdlc.run` /
+`approve`) in that workspace. Normal generation does not edit the source checkout, but a workspace
+copy is not an OS security boundary. The AI calls go through the Copilot CLI (`copilot`) on the server;
+the browser is not sent backend credentials.
+
+The ZIP contains the requirement, generated Markdown documents, changed source files under
+`code/files`, and a Git patch under `code/changes.patch`. It is a change bundle against the job's
+application template, not a standalone copy of the entire application.
+
+### Run locally (Windows PowerShell)
+
+Requires the backend venv from the Quick start, git, and the Copilot CLI signed in (`copilot` → `/login`).
+Code generation also needs the .NET 8 SDK and Node/npm for the SmartServe template's builds and tests.
+
+```powershell
+cd apps/intake-portal/backend
+$env:STUDIO_PASSWORD = 'admin'          # shared sign-in password (username defaults to "admin")
+$env:APP_ENV = 'development'
+$env:PUBLIC_BASE_URL = 'http://localhost:8001'
+.venv\Scripts\python -m uvicorn app.studio.main:create_studio_app --factory --host 127.0.0.1 --port 8001
+```
+
+Open http://localhost:8001 and sign in. Without `SESSION_SECRET` the cookie key is random per process,
+so restarting Studio signs everyone out; set it (32+ random characters) to keep sessions across restarts.
+
+### Container image and Azure
+
+Build from the **repository root** (the image bakes the agents, config and orchestrator in as the job
+source, plus git, Node 22, the .NET 8 SDK and the Copilot CLI for the Code stage):
+
+```bash
+docker build -f apps/intake-portal/Dockerfile.studio -t aisdlc-studio .
+# Local container check; existing server-side environment variables supply credentials.
+docker run --rm -p 127.0.0.1:8002:8000 -e APP_ENV=development \
+  -e STUDIO_PASSWORD -e SESSION_SECRET -e COPILOT_GITHUB_TOKEN \
+  -e PUBLIC_BASE_URL=http://localhost:8002 aisdlc-studio
+```
+
+Open http://localhost:8002 for this local container check. Do not use production HTTPS settings with
+a plain-HTTP browser URL: the production session cookie requires HTTPS.
+If your network requires package mirrors, pass credential-free `NPM_CONFIG_REGISTRY` and
+`PIP_INDEX_URL` build arguments pointing at your approved mirrors. Do not disable TLS or hash checks.
+
+- **Secrets** (`STUDIO_PASSWORD`, `SESSION_SECRET`, `COPILOT_GITHUB_TOKEN`) come from Key Vault references
+  (App Service) or a Kubernetes secret (AKS). Never bake them into the image or commit them.
+  `COPILOT_GITHUB_TOKEN` is a fine-grained PAT of a user with a Copilot licence; Studio passes it only to
+  the agent subprocess, and strips `STUDIO_PASSWORD`, `SESSION_SECRET` and `GITHUB_TOKEN` from it.
+- **Single instance.** Jobs are files plus an in-process runner: run one App Service instance / one AKS
+  replica, and mount persistent storage (Azure Files) at `DATA_DIR` (`/app/var/studio`).
+- **App Service:** use a Linux custom container, target port `8000` (`WEBSITES_PORT=8000` for the
+  classic container configuration), Always On and health path `/healthz`. Restrict ingress before
+  publishing the URL. Mount storage writable by the image's UID `10001`.
+- **AKS:** use one replica, a persistent volume writable by UID `10001`, readiness/liveness probes on
+  `/healthz:8000`, and a TLS ingress with a network allowlist. Never mount the Docker socket.
+- Production (`APP_ENV=production`, the image default) refuses to start without an https
+  `PUBLIC_BASE_URL` and a 32+ character `SESSION_SECRET`. TLS is terminated by App Service / ingress.
+- Long stages (especially Code) can take many minutes; `STAGE_TIMEOUT_SECONDS` (default 3600) stops a
+  run. The timeout kills the orchestrator process; tools it started may finish on their own.
+
+### Studio settings
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `STUDIO_USERNAME` | `admin` | Shared sign-in username |
+| `STUDIO_PASSWORD` | *(required)* | Shared sign-in password — no default |
+| `SESSION_SECRET` | random per process | Cookie signing key; required (32+ chars) in production |
+| `PUBLIC_BASE_URL` | `http://localhost:8001` | Public URL; https enables `Secure` cookies |
+| `DATA_DIR` | `var/studio` | Jobs, workspaces and artifacts (persistent storage in Azure) |
+| `AISDLC_SOURCE_DIR` | this repository | Git repo with `scripts/sdlc` and `config` that jobs clone |
+| `USE_LLM` | `true` | `false` runs the orchestrator's offline templates (no AI) |
+| `ENABLE_CODE_STAGE` | `true` | `false` stops after Tasks (documents only) |
+| `MAX_CONCURRENT_RUNS` | `1` | Stages run at the same time; others queue |
+| `STAGE_TIMEOUT_SECONDS` | `3600` | Per-stage time limit |
+| `COPILOT_GITHUB_TOKEN` | — | Copilot CLI auth on servers (locally the CLI uses your `/login`) |
+
+### Studio safety notes
+
+- **A shared password like `admin/admin` is only for your own machine.** Anyone who can reach Studio can
+  sign in and spend the Copilot quota of the account behind it. Before exposing it, set a strong
+  `STUDIO_PASSWORD` and restrict access (App Service access restrictions / private endpoint, AKS ingress
+  allowlist, or Entra ID Easy Auth in front). Studio logs a warning at start-up when the password is weak.
+- Everyone who signs in sees every requirement, so do not mix customers on one instance.
+- The Code stage runs a tool-enabled AI agent with the server's OS identity. Workspace copies and the
+  subprocess environment filter are not isolation from other files, jobs or processes. Use a disposable,
+  access-restricted instance for trusted demo inputs. Public/untrusted multi-user hosting requires
+  isolated workers and separate credentials; do not treat this shared-login demo as tenant isolation.
+- Sign-in and actions are rate-limited; cookies are `HttpOnly`, `SameSite=Strict`, and every change needs
+  a CSRF header (except sign-in and sign-out). Uploaded files are size-limited and parsed in a separate process.
+
+Tests: `pytest tests/test_studio.py` covers both documents-only and code-enabled flows, login, server-only
+credentials, quality gates and code downloads without AI calls. An opt-in live test consumes Copilot quota:
+
+```powershell
+# From backend, with Copilot CLI signed in and Node/npm available:
+$env:RUN_STUDIO_LIVE_TEST = '1'
+.venv\Scripts\python -m pytest tests\test_studio.py -k live_code_stage
+Remove-Item Env:\RUN_STUDIO_LIVE_TEST
+```
+
+The live test seeds explicitly synthetic, pre-approved Architecture/Task fixtures in a disposable
+workspace, then uses the real model gate, generator, build/test checks, QC, code download and approval
+API. It verifies six behaviors in the generated TypeScript helper and exact source bytes in the ZIP.
+It does not approve or modify customer jobs, and is not an end-to-end AI run of all document stages.
 
 ## Tests
 

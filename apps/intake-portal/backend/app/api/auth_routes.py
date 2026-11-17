@@ -1,4 +1,4 @@
-"""Portal sign-in (Entra ID or dev bypass) and the GitHub connect (OAuth) flow."""
+"""Portal sign-in and the named-user GitHub connect (OAuth) flow."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,7 +22,7 @@ from ..extract import allowed_extensions
 from ..github.app_auth import OAuthError
 from ..github.clients import UserGitHubClient
 from ..github.http import GitHubError
-from ..github.identity import get_link, store_tokens
+from ..github.identity import get_link, require_individual_user, store_tokens
 from .deps import container, current_user, db_session, sessions
 
 router = APIRouter()
@@ -73,6 +73,8 @@ LOGIN_FLOW_COOKIE = "portal_ghlogin"
 
 
 def sign_in_kind(user: User) -> str:
+    if user.is_shared:
+        return "password"
     if user.entra_oid.startswith(GITHUB_OID_PREFIX):
         return "github"
     if user.entra_oid.startswith("dev-"):
@@ -87,7 +89,53 @@ def auth_options(request: Request, c: Container = Depends(container)) -> dict[st
         "microsoft": request.app.state.entra is not None,
         "github": c.settings.github_signin_enabled,
         "dev": c.settings.auth_mode == "dev",
+        "password": c.settings.auth_mode == "password",
     }
+
+
+class PasswordLogin(BaseModel):
+    username: str = Field(max_length=100)
+    password: SecretStr = Field(max_length=1024)
+
+
+@router.post("/auth/password-login")
+def password_login(
+    body: PasswordLogin,
+    request: Request,
+    response: Response,
+    db: Session = Depends(db_session),
+    c: Container = Depends(container),
+    sm: SessionManager = Depends(sessions),
+) -> dict[str, str]:
+    if c.settings.auth_mode != "password":
+        raise ApiError(404, "not_found", "Password sign-in is not enabled.")
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") not in {c.settings.public_base_url.rstrip("/"), *c.settings.cors_origins}:
+        raise ApiError(403, "bad_origin", "Cross-origin sign-in is not allowed.")
+    peer = request.client.host if request.client else "unknown"
+    if not c.rate.allow(peer, "password-login", c.settings.rate_limit_login_per_min):
+        raise ApiError(429, "rate_limited", "Too many sign-in attempts. Wait a minute and try again.")
+    valid_user = secrets.compare_digest(body.username.encode(), b"admin")
+    valid_password = secrets.compare_digest(
+        body.password.get_secret_value().encode(), c.settings.portal_admin_password.get_secret_value().encode()
+    )
+    if not (valid_user and valid_password):
+        raise ApiError(401, "bad_credentials", "Incorrect username or password.")
+    user = upsert_user(
+        db,
+        EntraIdentity(oid="shared:admin", name="Admin (shared)", email="", roles=[c.settings.entra_requester_role]),
+    )
+    record(
+        db,
+        user=user,
+        github_login="",
+        identity="portal",
+        action="password_signin",
+        target_type="account",
+        target_ref="shared:admin",
+        outcome="ok",
+    )
+    return {"status": "signed_in", "csrf_token": sm.issue(response, user.id)}
 
 
 @router.get("/auth/github/login")
@@ -325,6 +373,7 @@ def github_connect(
     c: Container = Depends(container),
     sm: SessionManager = Depends(sessions),
 ) -> Response:
+    require_individual_user(user)
     state = secrets.token_urlsafe(24)
     resp = RedirectResponse(c.oauth.authorize_url(state), status_code=302)
     sm.set_flow(resp, "portal_gh", {"state": state, "uid": user.id})
@@ -362,6 +411,7 @@ def github_callback(
     user = db.get(User, int(sess["uid"]))
     if user is None:
         return fail("session")
+    require_individual_user(user)
     try:
         tokens = c.oauth.exchange(code)
         me = UserGitHubClient(c.http, tokens.access_token, "", 0, c.owner, c.repo).whoami()

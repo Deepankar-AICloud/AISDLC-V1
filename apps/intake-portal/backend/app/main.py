@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import secrets
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -111,7 +112,9 @@ def create_app(settings: Settings | None = None, fake: FakeGitHub | None = None)
         openapi_url="/api/openapi.json" if settings.is_dev else None,
     )
     app.state.container = container
-    secret = settings.session_secret.get_secret_value() or ("dev-only-session-secret-" + "x" * 16)
+    secret = settings.session_secret.get_secret_value() or (
+        secrets.token_urlsafe(48) if settings.auth_mode == "password" else "dev-only-session-secret-" + "x" * 16
+    )
     app.state.sessions = SessionManager(secret, settings.session_max_age_seconds, settings.secure_cookies)
     app.state.entra = (
         EntraClient(
@@ -120,7 +123,7 @@ def create_app(settings: Settings | None = None, fake: FakeGitHub | None = None)
             settings.entra_client_secret.get_secret_value(),
             settings.public_base_url.rstrip("/") + "/auth/callback",
         )
-        if settings.auth_mode == "entra" and settings.entra_tenant_id
+        if settings.auth_mode in ("entra", "password") and settings.entra_configured
         else None
     )
 

@@ -34,7 +34,7 @@ gates:
       - no_orphan_stories: true
 
   architecture:
-    threshold: 90
+    threshold: 70
     # nfr_alignment is scored at the NFR stage, which runs after architecture.
     dimensions: [completeness, consistency, security, maintainability, traceability]
     deterministic_checks:

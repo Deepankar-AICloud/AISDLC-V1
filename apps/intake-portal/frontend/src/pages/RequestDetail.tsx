@@ -58,7 +58,12 @@ function AnswerForm({ detail, onDone }: { detail: RequestDetail; onDone: (messag
         ))}
       </ul>
       {error && <Alert kind="error">{error}</Alert>}
-      {!me.github.connected ? (
+      {me.user.sign_in === "password" ? (
+        <Alert kind="info">
+          Share these details with the assigned reviewer. They must post the answer using their own GitHub account. This
+          shared login can submit requirements and view results, but cannot answer or approve on someone's behalf.
+        </Alert>
+      ) : !me.github.connected ? (
         <Alert kind="info">
           Your answer is posted with your own GitHub account. <a href="/auth/github/connect">Connect GitHub</a> to
           answer here.

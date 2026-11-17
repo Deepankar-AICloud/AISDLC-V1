@@ -37,7 +37,8 @@ export function AccountPage() {
       <div className="card">
         <h2>Portal identity</h2>
         <p>
-          {me.user.name} ({me.user.email}) · roles: {me.user.roles.join(", ") || "none"}
+          {me.user.name}
+          {me.user.email ? ` (${me.user.email})` : ""} · roles: {me.user.roles.join(", ") || "none"}
         </p>
       </div>
       <div className="card">
@@ -47,7 +48,12 @@ export function AccountPage() {
           GitHub shows your name and applies branch protection and CODEOWNERS. The portal never uses a shared account
           for them.
         </p>
-        {me.github.connected ? (
+        {me.user.sign_in === "password" ? (
+          <Alert kind="info">
+            You do not need to connect GitHub to submit requirements or view results. To review or approve, sign out and
+            use your own reviewer account. Personal GitHub accounts cannot be linked to the shared login.
+          </Alert>
+        ) : me.github.connected ? (
           <>
             <p>
               Connected as <strong>{me.github.login}</strong>.

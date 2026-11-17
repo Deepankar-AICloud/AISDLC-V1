@@ -2,7 +2,7 @@
 
 Safety rules enforced at startup (see `Settings.validate_safety`):
 - The dev auth bypass and the fake GitHub backend only work when APP_ENV=development.
-- Production requires real Entra settings, a real GitHub App, a token encryption key,
+- Production requires named reviewer sign-in, a real GitHub App, a token encryption key,
   a webhook secret, process-isolated extraction, and secure cookies.
 """
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -38,7 +39,9 @@ class Settings(BaseSettings):
     serve_frontend_dir: Path | None = None
 
     # --- Portal sign-in (Entra ID) -------------------------------------------
-    auth_mode: Literal["entra", "dev"] = "entra"
+    auth_mode: Literal["entra", "dev", "password"] = "entra"
+    # Shared requester only. GitHub reviews and approvals still require a named user.
+    portal_admin_password: SecretStr = SecretStr("")
     entra_tenant_id: str = ""
     entra_client_id: str = ""
     entra_client_secret: SecretStr = SecretStr("")
@@ -131,6 +134,7 @@ class Settings(BaseSettings):
     rate_limit_submit_per_min: int = 6
     rate_limit_actions_per_min: int = 30
     rate_limit_reads_per_min: int = 240
+    rate_limit_login_per_min: int = Field(default=10, ge=1)
 
     @property
     def is_dev(self) -> bool:
@@ -151,8 +155,42 @@ class Settings(BaseSettings):
             return self.github_app_private_key_path.read_text(encoding="utf-8")
         return ""
 
+    @property
+    def entra_configured(self) -> bool:
+        return bool(self.entra_tenant_id and self.entra_client_id and self.entra_client_secret.get_secret_value())
+
     @model_validator(mode="after")
     def validate_safety(self) -> Settings:
+        if self.auth_mode == "password":
+            password = self.portal_admin_password.get_secret_value()
+            if not password:
+                raise UnsafeConfigurationError("AUTH_MODE=password requires PORTAL_ADMIN_PASSWORD.")
+            if self.app_env == "production" and len(password) < 12:
+                raise UnsafeConfigurationError("PORTAL_ADMIN_PASSWORD must be at least 12 characters in production.")
+            if self.app_env == "development" and (
+                self.bind_host not in ("127.0.0.1", "localhost", "::1")
+                or urlsplit(self.public_base_url).hostname not in ("127.0.0.1", "localhost", "::1")
+            ):
+                raise UnsafeConfigurationError("Development password sign-in requires loopback hosting.")
+            if not self.github_signin_enabled and not self.entra_configured:
+                raise UnsafeConfigurationError(
+                    "Password sign-in requires a named reviewer sign-in: GITHUB_SIGNIN_ENABLED or Entra settings."
+                )
+            if self.github_mode == "app":
+                missing = [
+                    name
+                    for name, value in {
+                        "GITHUB_REPOSITORY": self.github_repository,
+                        "GITHUB_APP_ID": self.github_app_id,
+                        "GITHUB_APP_CLIENT_ID": self.github_app_client_id,
+                        "GITHUB_APP_CLIENT_SECRET": self.github_app_client_secret.get_secret_value(),
+                    }.items()
+                    if not value
+                ]
+                if not self.app_private_key():
+                    missing.append("GITHUB_APP_PRIVATE_KEY or GITHUB_APP_PRIVATE_KEY_PATH")
+                if missing:
+                    raise UnsafeConfigurationError("Missing real GitHub settings: " + ", ".join(missing))
         dev_only: list[str] = []
         if self.auth_mode == "dev":
             dev_only.append("AUTH_MODE=dev")
@@ -176,9 +214,6 @@ class Settings(BaseSettings):
                 name
                 for name, value in {
                     "SESSION_SECRET": self.session_secret.get_secret_value(),
-                    "ENTRA_TENANT_ID": self.entra_tenant_id,
-                    "ENTRA_CLIENT_ID": self.entra_client_id,
-                    "ENTRA_CLIENT_SECRET": self.entra_client_secret.get_secret_value(),
                     "GITHUB_REPOSITORY": self.github_repository,
                     "GITHUB_APP_ID": self.github_app_id,
                     "GITHUB_APP_CLIENT_ID": self.github_app_client_id,
@@ -188,6 +223,16 @@ class Settings(BaseSettings):
                 }.items()
                 if not value
             ]
+            if self.auth_mode == "entra":
+                missing += [
+                    name
+                    for name, value in {
+                        "ENTRA_TENANT_ID": self.entra_tenant_id,
+                        "ENTRA_CLIENT_ID": self.entra_client_id,
+                        "ENTRA_CLIENT_SECRET": self.entra_client_secret.get_secret_value(),
+                    }.items()
+                    if not value
+                ]
             if not self.app_private_key():
                 missing.append("GITHUB_APP_PRIVATE_KEY or GITHUB_APP_PRIVATE_KEY_PATH")
             if missing:

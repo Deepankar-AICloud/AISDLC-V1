@@ -42,6 +42,16 @@ def get_link(db: Session, user: User) -> GitHubLink | None:
     return db.scalar(select(GitHubLink).where(GitHubLink.user_id == user.id))
 
 
+def require_individual_user(user: User) -> None:
+    if user.is_shared:
+        raise ApiError(
+            403,
+            "shared_identity",
+            "The shared account can submit requirements and view results. Sign in with your own reviewer "
+            "account for answers, model decisions, reviews and approvals.",
+        )
+
+
 def link_for_login(db: Session, login: str) -> GitHubLink | None:
     return db.scalar(select(GitHubLink).where(GitHubLink.github_login.ilike(login)))
 
@@ -62,6 +72,7 @@ def mark_revoked(db: Session, link: GitHubLink) -> None:
 
 
 def user_client(c: Container, db: Session, user: User, *, verify_identity: bool = False) -> UserGitHubClient:
+    require_individual_user(user)
     link = get_link(db, user)
     if link is None:
         raise not_linked()

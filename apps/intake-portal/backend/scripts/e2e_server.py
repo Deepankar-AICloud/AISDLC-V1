@@ -25,7 +25,8 @@ def main() -> None:
     os.environ.update(
         {
             "APP_ENV": "development",
-            "AUTH_MODE": "dev",
+            "AUTH_MODE": os.environ.get("E2E_AUTH_MODE", "dev"),
+            "PORTAL_ADMIN_PASSWORD": "e2e-only-password",
             "GITHUB_MODE": "fake",
             "GITHUB_SIGNIN_ENABLED": "true",
             "BIND_HOST": "127.0.0.1",

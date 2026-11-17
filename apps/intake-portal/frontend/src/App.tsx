@@ -69,7 +69,11 @@ function Layout({ me, children }: { me: Me; children: React.ReactNode }) {
           <div className="header-user">
             <span>
               {me.user.name} · {me.user.roles.join(", ")}
-              {me.github.connected ? ` · GitHub: ${me.github.login}` : " · GitHub not connected"}
+              {me.user.sign_in === "password"
+                ? " · GitHub managed by the backend"
+                : me.github.connected
+                  ? ` · GitHub: ${me.github.login}`
+                  : " · GitHub not connected"}
             </span>
             <button type="button" className="secondary" onClick={logout}>
               Sign out
@@ -80,6 +84,12 @@ function Layout({ me, children }: { me: Me; children: React.ReactNode }) {
       <main id="main" tabIndex={-1}>
         {me.config.github_mode === "fake" && (
           <Alert kind="info">Development mode: GitHub is simulated. Nothing is sent to a real repository.</Alert>
+        )}
+        {me.user.sign_in === "password" && (
+          <Alert kind="info">
+            Shared requester account: everyone using this login can see its requests. Named reviewers handle answers,
+            model decisions and approvals.
+          </Alert>
         )}
         {repo.private === false && (
           <Alert kind="warn" title={`${repo.full_name} is a public repository.`}>

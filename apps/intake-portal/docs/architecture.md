@@ -46,6 +46,17 @@ flowchart LR
 Service identity arrows (1-4 and reads) use the GitHub App installation token. Reviewer, answer and
 production arrows use the signed-in user's own GitHub App user access token.
 
+### Optional shared requester sign-in
+
+`AUTH_MODE=password` adds a server-validated `admin` login, using `PORTAL_ADMIN_PASSWORD` and the
+existing signed session cookie. Its `shared:admin` portal identity has only the Requester role. It can
+submit via the existing installation-token intake path and read its requests; it cannot connect a personal
+GitHub account or use the user-token write path. Named GitHub/Entra reviewer sign-in stays separate, with
+all existing model, review and production gates intact. Everyone sharing the password sees the shared
+request history; this is not tenant isolation. Development password mode is restricted to loopback;
+production requires a strong password, HTTPS and the existing secret/extraction safeguards.
+The standalone Studio app and its local generator are unaffected.
+
 ## How AISDLC reads context, and what that means for the portal
 
 From `.github/workflows/agentic-sdlc.yml` ("Fetch requirement context"):

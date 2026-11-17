@@ -1,5 +1,5 @@
 export type Me = {
-  user: { name: string; email: string; roles: string[]; sign_in: "microsoft" | "github" | "dev" };
+  user: { name: string; email: string; roles: string[]; sign_in: "microsoft" | "github" | "dev" | "password" };
   csrf_token: string;
   github: { connected: boolean; login: string | null; needs_reconnect: boolean };
   config: {
@@ -11,7 +11,7 @@ export type Me = {
     max_total_mb: number;
     max_pasted_chars: number;
     notice: string;
-    auth_mode: "entra" | "dev";
+    auth_mode: "entra" | "dev" | "password";
     github_mode: "app" | "fake";
     reviewer_role: string;
     requester_role: string;

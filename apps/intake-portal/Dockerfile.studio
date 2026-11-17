@@ -1,0 +1,73 @@
+# AISDLC Studio: shared sign-in web app that runs the AISDLC agents
+# (BRD -> PRD -> Epics -> Architecture -> NFR -> Tasks -> Code) behind a simple UI.
+#
+# Build from the REPOSITORY ROOT. The image bakes this repository (agents, config,
+# orchestrator, SmartServe template) in as the source that every job clones:
+#   docker build -f apps/intake-portal/Dockerfile.studio -t aisdlc-studio .
+#
+# Runtime needs: STUDIO_PASSWORD, SESSION_SECRET, PUBLIC_BASE_URL (https) and
+# COPILOT_GITHUB_TOKEN, all injected as secrets (Key Vault / Kubernetes secret).
+
+FROM node:22.12.0-bookworm-slim AS node
+FROM mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim AS dotnet
+
+FROM python:3.12.8-slim-bookworm AS runtime
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
+ARG COPILOT_CLI_VERSION=1.0.112
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1 \
+    NPM_CONFIG_UPDATE_NOTIFIER=false \
+    NPM_CONFIG_FUND=false \
+    APP_ENV=production \
+    EXTRACTION_ISOLATION=process \
+    AISDLC_SOURCE_DIR=/opt/aisdlc \
+    DATA_DIR=/app/var/studio \
+    PORT=8000
+
+# git (workspace clones and code diffs), ICU for .NET, plus Node 22 and the .NET 8 SDK
+# so the Code stage can build and test what it generates.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates libicu72 \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+ && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+COPY --from=dotnet /usr/share/dotnet /usr/share/dotnet
+RUN ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet \
+ && npm install -g --registry "${NPM_CONFIG_REGISTRY}" "@github/copilot@${COPILOT_CLI_VERSION}" \
+ && npm cache clean --force
+
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin studio
+WORKDIR /app
+COPY apps/intake-portal/backend/requirements.lock ./
+RUN pip install --index-url "${PIP_INDEX_URL}" --require-hashes --no-deps -r requirements.lock
+COPY apps/intake-portal/backend/app ./app
+
+# The AISDLC repository as a read-only git source; each job gets a shallow clone of it.
+COPY . /opt/aisdlc
+RUN git config --system safe.directory /opt/aisdlc \
+ && git config --system --add safe.directory /opt/aisdlc/.git \
+ && git config --system user.name "AISDLC Studio" \
+ && git config --system user.email "studio@localhost" \
+ && cd /opt/aisdlc \
+ && git init --quiet --initial-branch=main \
+ && git add -A \
+ && git commit --quiet -m "AISDLC source snapshot" \
+      -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>" \
+ && chmod -R a+rX /opt/aisdlc \
+ && mkdir -p /app/var/studio && chown -R studio:studio /app/var
+
+USER studio
+EXPOSE 8000
+VOLUME ["/app/var/studio"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD python -c "import os,urllib.request,sys; sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",\"8000\")}/healthz', timeout=4).status == 200 else 1)"
+
+# App Service / ingress terminates TLS and sets X-Forwarded-* headers.
+CMD ["sh", "-c", "exec python -m uvicorn app.studio.main:create_studio_app --factory --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips='*' --no-server-header"]

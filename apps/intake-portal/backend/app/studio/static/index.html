@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AISDLC Studio</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">◆</span> AISDLC Studio</div>
+    <div class="who" id="who" hidden>
+      <span id="mode-badge" class="badge"></span>
+      <span id="username"></span>
+      <button id="logout" class="link">Sign out</button>
+    </div>
+  </header>
+
+  <main id="login-view" class="center" hidden>
+    <form id="login-form" class="card login" autocomplete="on">
+      <h1>Sign in</h1>
+      <p class="muted">Generate BRD, PRD, epics, architecture, NFRs, task plans and code from your requirement.</p>
+      <label>Username <input id="login-user" name="username" autocomplete="username" required /></label>
+      <label>Password <input id="login-pass" name="password" type="password" autocomplete="current-password" required /></label>
+      <p id="login-error" class="error" hidden></p>
+      <button type="submit" class="primary">Sign in</button>
+    </form>
+  </main>
+
+  <main id="app-view" class="layout" hidden>
+    <aside class="sidebar">
+      <button id="new-btn" class="primary wide">+ New requirement</button>
+      <h2>Requests</h2>
+      <ul id="job-list" class="job-list"></ul>
+    </aside>
+
+    <section class="content">
+      <p id="app-error" class="error" role="alert" hidden></p>
+      <div id="new-view" class="card" hidden>
+        <h1>New requirement</h1>
+        <p class="muted">Paste your requirement and/or upload documents. The AI agents will draft each SDLC document in turn, and you review every stage before it continues.</p>
+        <form id="new-form">
+          <label>Title <input id="new-title" maxlength="200" placeholder="e.g. Employee leave management" /></label>
+          <label>Requirement
+            <textarea id="new-text" rows="12" placeholder="Describe the business problem, objectives, users/stakeholders, key features, constraints…"></textarea>
+          </label>
+          <label>Documents (optional)
+            <input id="new-files" type="file" multiple />
+            <span id="accept-hint" class="hint"></span>
+          </label>
+          <p id="new-error" class="error" hidden></p>
+          <button type="submit" id="new-submit" class="primary">Start generation</button>
+        </form>
+      </div>
+
+      <div id="empty-view" class="card muted center-text">
+        <p>Select a request on the left, or start a new requirement.</p>
+      </div>
+
+      <div id="job-view" hidden>
+        <div class="card">
+          <div class="job-head">
+            <div>
+              <h1 id="job-title"></h1>
+              <span class="muted" id="job-meta"></span>
+            </div>
+            <div class="head-actions">
+              <a id="download" class="button" href="#" hidden>Download bundle</a>
+              <button id="delete-btn" class="link danger">Delete</button>
+            </div>
+          </div>
+          <ol id="stepper" class="stepper"></ol>
+          <div id="status-box" class="status"></div>
+          <div id="action-box"></div>
+        </div>
+
+        <div class="card" id="docs-card" hidden>
+          <div id="doc-tabs" class="tabs"></div>
+          <article id="doc-body" class="markdown"></article>
+        </div>
+
+        <details class="card">
+          <summary>Activity</summary>
+          <ul id="events" class="events"></ul>
+        </details>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

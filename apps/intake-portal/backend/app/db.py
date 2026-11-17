@@ -40,6 +40,10 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_login_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
+    @property
+    def is_shared(self) -> bool:
+        return self.entra_oid == "shared:admin"
+
 
 class GitHubLink(Base):
     """One Entra user <-> one GitHub account, verified by the OAuth connect step."""

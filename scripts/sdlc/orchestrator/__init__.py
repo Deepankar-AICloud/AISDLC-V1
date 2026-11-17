@@ -487,11 +487,13 @@ class Orchestrator:
         issues: list[str] = []
         log: list[str] = []
         for name, cmd, cwd in commands:
-            if shutil.which(cmd[0]) is None:
+            executable = shutil.which(cmd[0])
+            if executable is None:
                 issues.append(f"{name}: '{cmd[0]}' is not installed, so the change could not be verified.")
                 continue
             try:
-                proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
+                # Resolve npm/npx to their .cmd launchers on Windows.
+                proc = subprocess.run([executable, *cmd[1:]], cwd=cwd, capture_output=True, text=True,
                                       timeout=900, check=False)
             except subprocess.TimeoutExpired:
                 issues.append(f"{name} timed out after 900 s.")
