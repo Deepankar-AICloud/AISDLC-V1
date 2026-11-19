@@ -7,6 +7,8 @@ name: Agentic SDLC — Artifact Review & Resume
 on:
   pull_request_review:
     types: [submitted]
+  pull_request:
+    types: [closed]
   workflow_dispatch:
     inputs:
       issue_number:
@@ -25,19 +27,49 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  resume:
-    # Only on approval of an SDLC review PR, or a manual resume.
+  gate:
+    # A merge without an approving review is also treated as approval. If the PR
+    # was already approved, the review run advanced the stage, so skip it here.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.review.state == 'approved' &&
+      (github.event_name == 'pull_request_review' &&
+       github.event.review.state == 'approved' &&
+       startsWith(github.event.pull_request.head.ref, 'sdlc/issue-')) ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
        startsWith(github.event.pull_request.head.ref, 'sdlc/issue-'))
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - name: Skip merges already handled by an approving review
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          PROCEED=true
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            APPROVALS="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
+              --jq '[.[] | select(.state == "APPROVED")] | length')"
+            if [[ "$APPROVALS" -gt 0 ]]; then
+              echo "PR #$PR_NUMBER was approved; the review run already advanced the stage."
+              PROCEED=false
+            fi
+          fi
+          echo "proceed=$PROCEED" >> "$GITHUB_OUTPUT"
+
+  resume:
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref || 'main' }}
+          # Merged PR branches may already be deleted, so use main for merges.
+          ref: ${{ github.event_name == 'pull_request_review' && github.event.pull_request.head.ref || 'main' }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -78,11 +110,16 @@ jobs:
           test -f ".sdlc/issue-$ISSUE_NUMBER.json"
 
       - name: Mark stage approved & advance state
+        id: approval
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ steps.meta.outputs.issue }}
+          REVIEWER: ${{ github.event.review.user.login || github.actor }}
         run: |
-          python -m scripts.sdlc.approve --issue "${{ steps.meta.outputs.issue }}" \
-            --reviewer "${{ github.event.review.user.login || github.actor }}"
+          python -m scripts.sdlc.approve --issue "$ISSUE_NUMBER" --reviewer "$REVIEWER" \
+            | tee /tmp/approval.txt
+          NEXT_STAGE="$(sed -E 's/.* -> //' /tmp/approval.txt)"
+          echo "next_stage=$NEXT_STAGE" >> "$GITHUB_OUTPUT"
 
       - name: Save approved state
         uses: actions/upload-artifact@v4
@@ -106,7 +143,24 @@ jobs:
       - name: Trigger next stage
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ steps.meta.outputs.issue }}
         run: |
           gh workflow run agentic-sdlc.yml --repo "$GITHUB_REPOSITORY" --ref main \
-            -f issue_number="${{ steps.meta.outputs.issue }}" \
+            -f issue_number="$ISSUE_NUMBER" \
             -f state_run_id="${{ github.run_id }}"
+
+      - name: Notify issue participants that the stage advanced
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ steps.meta.outputs.issue }}
+          NEXT_STAGE: ${{ steps.approval.outputs.next_stage }}
+        run: |
+          cat > /tmp/approval-notification.md <<EOF
+          ## ✅ Artifact approved
+
+          Issue #${ISSUE_NUMBER}: the artifact was approved. The next pipeline stage is **${NEXT_STAGE}**.
+
+          The next stage has been queued.
+          EOF
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --body-file /tmp/approval-notification.md

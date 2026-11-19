@@ -29,7 +29,6 @@ export function isRequester(me: Me): boolean {
 }
 
 function Layout({ me, children }: { me: Me; children: React.ReactNode }) {
-  const repo = me.config.repository;
   async function logout() {
     await api("/auth/logout", { method: "POST" }).catch(() => undefined);
     window.location.assign("/login");
@@ -67,34 +66,23 @@ function Layout({ me, children }: { me: Me; children: React.ReactNode }) {
             </ul>
           </nav>
           <div className="header-user">
-            <span>
-              {me.user.name} · {me.user.roles.join(", ")}
-              {me.user.sign_in === "password"
-                ? " · GitHub managed by the backend"
-                : me.github.connected
-                  ? ` · GitHub: ${me.github.login}`
-                  : " · GitHub not connected"}
-            </span>
-            <button type="button" className="secondary" onClick={logout}>
-              Sign out
-            </button>
+            {me.user.sign_in !== "password" && (
+              <span>
+                {me.user.name} · {me.user.roles.join(", ")}
+                {me.github.connected ? ` · GitHub: ${me.github.login}` : " · GitHub not connected"}
+              </span>
+            )}
+            {me.config.auth_mode !== "open" && (
+              <button type="button" className="secondary" onClick={logout}>
+                Sign out
+              </button>
+            )}
           </div>
         </div>
       </header>
       <main id="main" tabIndex={-1}>
         {me.config.github_mode === "fake" && (
           <Alert kind="info">Development mode: GitHub is simulated. Nothing is sent to a real repository.</Alert>
-        )}
-        {me.user.sign_in === "password" && (
-          <Alert kind="info">
-            Shared requester account: everyone using this login can see its requests. Named reviewers handle answers,
-            model decisions and approvals.
-          </Alert>
-        )}
-        {repo.private === false && (
-          <Alert kind="warn" title={`${repo.full_name} is a public repository.`}>
-            Everything you submit becomes publicly visible on GitHub.
-          </Alert>
         )}
         {me.github.needs_reconnect && (
           <Alert kind="warn" title="Your GitHub connection expired.">
@@ -113,14 +101,30 @@ export default function App() {
   const [error, setError] = useState("");
 
   const reload = useCallback(async () => {
-    try {
+    const loadMe = async () => {
       const m = await api<Me>("/api/me");
       setCsrf(m.csrf_token);
       setMe(m);
       setState("ready");
+    };
+    try {
+      await loadMe();
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) setState("anon");
-      else {
+      if (e instanceof ApiError && e.status === 401) {
+        try {
+          const options = await api<{ open?: boolean }>("/auth/options");
+          if (options.open) {
+            const r = await api<{ csrf_token: string }>("/auth/open-session", { method: "POST" });
+            setCsrf(r.csrf_token);
+            await loadMe();
+            return;
+          }
+          setState("anon");
+        } catch (inner) {
+          setError(errorText(inner));
+          setState("error");
+        }
+      } else {
         setError(errorText(e));
         setState("error");
       }

@@ -11,7 +11,7 @@ export type Me = {
     max_total_mb: number;
     max_pasted_chars: number;
     notice: string;
-    auth_mode: "entra" | "dev" | "password";
+    auth_mode: "entra" | "dev" | "password" | "open";
     github_mode: "app" | "fake";
     reviewer_role: string;
     requester_role: string;

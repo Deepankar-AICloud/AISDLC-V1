@@ -34,7 +34,7 @@ def current_user(request: Request, db: Session = Depends(db_session), sm: Sessio
     user = db.get(User, int(sess["uid"]))
     if user is None:
         raise ApiError(401, "not_signed_in", "Sign in to continue.")
-    if user.is_shared and container(request).settings.auth_mode != "password":
+    if user.is_shared and container(request).settings.auth_mode not in ("password", "open"):
         raise ApiError(401, "not_signed_in", "Shared sign-in is no longer enabled.")
     if request.method in UNSAFE and not sm.csrf_ok(sess, request.headers.get(CSRF_HEADER)):
         raise ApiError(403, "csrf_failed", "Your session token is missing or stale. Reload the page and try again.")

@@ -34,6 +34,7 @@ def test_disabled_by_default(portal):
         "github": False,
         "dev": True,
         "password": False,
+        "open": False,
     }
     assert TestClient(portal.app, follow_redirects=False).get("/auth/github/login").status_code == 404
     assert Settings.model_fields["github_signin_enabled"].default is False

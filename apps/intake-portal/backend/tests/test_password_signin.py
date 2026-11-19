@@ -40,7 +40,7 @@ def test_password_login_is_opt_in(portal):
 def test_shared_login_checks_credentials_and_keeps_secrets_server_side(shared_portal, capsys):
     client = TestClient(shared_portal.app)
     options = client.get("/auth/options")
-    assert options.json() == {"microsoft": False, "github": True, "dev": False, "password": True}
+    assert options.json() == {"microsoft": False, "github": True, "dev": False, "password": True, "open": False}
     for username, password in (("admin", "wrong"), ("nobody", PASSWORD), ("admin", "")):
         response = client.post("/auth/password-login", json={"username": username, "password": password})
         assert response.status_code == 401
@@ -135,6 +135,44 @@ def test_password_session_stops_working_when_mode_is_disabled(shared_portal):
     shared_portal.settings.auth_mode = "entra"
     assert client.get("/api/me").status_code == 401
 
+
+def test_open_mode_starts_a_shared_session_without_credentials(portal_factory):
+    p = portal_factory(auth_mode="open")
+    client = TestClient(p.app)
+    assert client.get("/auth/options").json()["open"] is True
+    assert client.get("/api/me").status_code == 401
+    assert client.post("/auth/open-session", headers={"Origin": "https://evil.test"}).status_code == 403
+    assert client.post("/auth/password-login", json={"username": "admin", "password": "x"}).status_code == 404
+    response = client.post("/auth/open-session")
+    assert response.status_code == 200
+    client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
+    info = client.get("/api/me").json()
+    assert info["user"]["roles"] == ["Requester"] and info["config"]["auth_mode"] == "open"
+    preview = client.post("/api/intake/preview", data={"pasted_text": CLEAR_REQUIREMENT, "fields": "{}"})
+    assert preview.status_code == 200
+    created = client.post(
+        "/api/requests", json={"draft_id": preview.json()["draft_id"]}, headers={"Idempotency-Key": "open-intake"}
+    )
+    assert created.status_code == 200, created.text
+    req = created.json()["request"]
+    assert client.post(f"/api/requests/{req['id']}/model", json={"command": "approve"}).status_code == 403
+
+
+def test_open_session_is_disabled_in_other_modes(portal):
+    client = TestClient(portal.app)
+    assert client.get("/auth/options").json()["open"] is False
+    assert client.post("/auth/open-session").status_code == 404
+
+
+def test_open_mode_is_local_development_only():
+    with pytest.raises(UnsafeConfigurationError, match="AUTH_MODE=open"):
+        Settings(app_env="production", auth_mode="open", github_mode="fake")
+    with pytest.raises(UnsafeConfigurationError, match="loopback"):
+        Settings(app_env="development", auth_mode="open", github_mode="fake", bind_host="0.0.0.0")  # noqa: S104
+    with pytest.raises(UnsafeConfigurationError, match="AUTH_MODE=open requires BIND_HOST"):
+        Settings(
+            app_env="test", auth_mode="open", github_mode="fake", bind_host="0.0.0.0", public_base_url="http://testserver"  # noqa: S104
+        )
 
 def test_password_mode_requires_a_password_and_named_reviewers():
     with pytest.raises(UnsafeConfigurationError, match="PORTAL_ADMIN_PASSWORD"):

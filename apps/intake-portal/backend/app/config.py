@@ -39,8 +39,9 @@ class Settings(BaseSettings):
     serve_frontend_dir: Path | None = None
 
     # --- Portal sign-in (Entra ID) -------------------------------------------
-    auth_mode: Literal["entra", "dev", "password"] = "entra"
-    # Shared requester only. GitHub reviews and approvals still require a named user.
+    auth_mode: Literal["entra", "dev", "password", "open"] = "entra"
+    # "password" and "open" sign everyone in as one shared requester ("open" needs no credentials).
+    # GitHub reviews and approvals still require a named user.
     portal_admin_password: SecretStr = SecretStr("")
     entra_tenant_id: str = ""
     entra_client_id: str = ""
@@ -167,15 +168,19 @@ class Settings(BaseSettings):
                 raise UnsafeConfigurationError("AUTH_MODE=password requires PORTAL_ADMIN_PASSWORD.")
             if self.app_env == "production" and len(password) < 12:
                 raise UnsafeConfigurationError("PORTAL_ADMIN_PASSWORD must be at least 12 characters in production.")
-            if self.app_env == "development" and (
-                self.bind_host not in ("127.0.0.1", "localhost", "::1")
-                or urlsplit(self.public_base_url).hostname not in ("127.0.0.1", "localhost", "::1")
-            ):
-                raise UnsafeConfigurationError("Development password sign-in requires loopback hosting.")
             if not self.github_signin_enabled and not self.entra_configured:
                 raise UnsafeConfigurationError(
                     "Password sign-in requires a named reviewer sign-in: GITHUB_SIGNIN_ENABLED or Entra settings."
                 )
+        if self.auth_mode in ("password", "open"):
+            if self.app_env == "development" and (
+                self.bind_host not in ("127.0.0.1", "localhost", "::1")
+                or urlsplit(self.public_base_url).hostname not in ("127.0.0.1", "localhost", "::1")
+            ):
+                raise UnsafeConfigurationError(f"Development AUTH_MODE={self.auth_mode} requires loopback hosting.")
+            # Anonymous visitors can create GitHub issues, so open mode never binds publicly in any environment.
+            if self.auth_mode == "open" and self.bind_host not in ("127.0.0.1", "localhost", "::1"):
+                raise UnsafeConfigurationError("AUTH_MODE=open requires BIND_HOST to be a loopback address.")
             if self.github_mode == "app":
                 missing = [
                     name
@@ -194,6 +199,8 @@ class Settings(BaseSettings):
         dev_only: list[str] = []
         if self.auth_mode == "dev":
             dev_only.append("AUTH_MODE=dev")
+        if self.auth_mode == "open":
+            dev_only.append("AUTH_MODE=open")
         if self.github_mode == "fake":
             dev_only.append("GITHUB_MODE=fake")
         if dev_only and self.app_env not in ("development", "test"):

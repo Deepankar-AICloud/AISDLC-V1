@@ -90,7 +90,50 @@ def auth_options(request: Request, c: Container = Depends(container)) -> dict[st
         "github": c.settings.github_signin_enabled,
         "dev": c.settings.auth_mode == "dev",
         "password": c.settings.auth_mode == "password",
+        "open": c.settings.auth_mode == "open",
     }
+
+
+def _check_origin_and_rate(request: Request, c: Container, bucket: str) -> None:
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") not in {c.settings.public_base_url.rstrip("/"), *c.settings.cors_origins}:
+        raise ApiError(403, "bad_origin", "Cross-origin sign-in is not allowed.")
+    peer = request.client.host if request.client else "unknown"
+    if not c.rate.allow(peer, bucket, c.settings.rate_limit_login_per_min):
+        raise ApiError(429, "rate_limited", "Too many sign-in attempts. Wait a minute and try again.")
+
+
+def _sign_in_shared(db: Session, c: Container, sm: SessionManager, response: Response, action: str) -> dict[str, str]:
+    user = upsert_user(
+        db,
+        EntraIdentity(oid="shared:admin", name="Admin (shared)", email="", roles=[c.settings.entra_requester_role]),
+    )
+    record(
+        db,
+        user=user,
+        github_login="",
+        identity="portal",
+        action=action,
+        target_type="account",
+        target_ref="shared:admin",
+        outcome="ok",
+    )
+    return {"status": "signed_in", "csrf_token": sm.issue(response, user.id)}
+
+
+@router.post("/auth/open-session")
+def open_session(
+    request: Request,
+    response: Response,
+    db: Session = Depends(db_session),
+    c: Container = Depends(container),
+    sm: SessionManager = Depends(sessions),
+) -> dict[str, str]:
+    """AUTH_MODE=open: start a shared-requester session without credentials."""
+    if c.settings.auth_mode != "open":
+        raise ApiError(404, "not_found", "Open access is not enabled.")
+    _check_origin_and_rate(request, c, "open-session")
+    return _sign_in_shared(db, c, sm, response, "open_session")
 
 
 class PasswordLogin(BaseModel):
@@ -109,33 +152,14 @@ def password_login(
 ) -> dict[str, str]:
     if c.settings.auth_mode != "password":
         raise ApiError(404, "not_found", "Password sign-in is not enabled.")
-    origin = request.headers.get("origin")
-    if origin and origin.rstrip("/") not in {c.settings.public_base_url.rstrip("/"), *c.settings.cors_origins}:
-        raise ApiError(403, "bad_origin", "Cross-origin sign-in is not allowed.")
-    peer = request.client.host if request.client else "unknown"
-    if not c.rate.allow(peer, "password-login", c.settings.rate_limit_login_per_min):
-        raise ApiError(429, "rate_limited", "Too many sign-in attempts. Wait a minute and try again.")
+    _check_origin_and_rate(request, c, "password-login")
     valid_user = secrets.compare_digest(body.username.encode(), b"admin")
     valid_password = secrets.compare_digest(
         body.password.get_secret_value().encode(), c.settings.portal_admin_password.get_secret_value().encode()
     )
     if not (valid_user and valid_password):
         raise ApiError(401, "bad_credentials", "Incorrect username or password.")
-    user = upsert_user(
-        db,
-        EntraIdentity(oid="shared:admin", name="Admin (shared)", email="", roles=[c.settings.entra_requester_role]),
-    )
-    record(
-        db,
-        user=user,
-        github_login="",
-        identity="portal",
-        action="password_signin",
-        target_type="account",
-        target_ref="shared:admin",
-        outcome="ok",
-    )
-    return {"status": "signed_in", "csrf_token": sm.issue(response, user.id)}
+    return _sign_in_shared(db, c, sm, response, "password_signin")
 
 
 @router.get("/auth/github/login")

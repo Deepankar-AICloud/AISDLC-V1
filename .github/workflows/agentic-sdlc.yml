@@ -252,11 +252,16 @@ jobs:
         if: steps.outcome.outputs.status == 'AWAITING_MODEL_CONFIRMATION'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          # Issues are opened by the portal bot, so the owner is not subscribed;
+          # an @mention makes GitHub notify (and email) them. Override via repo variable.
+          NOTIFY_USERS: ${{ vars.SDLC_NOTIFY_USERS || format('@{0}', github.repository_owner) }}
         run: |
           ISSUE="${{ steps.meta.outputs.issue }}"
           REC=$(python -c "import json;d=json.load(open('/tmp/outcome.json'));print(json.dumps(d.get('recommendation') or {}, indent=2))")
           gh issue comment "$ISSUE" --body "$(cat <<EOF
           ## 🤖 AI Model Recommendation — ${{ steps.outcome.outputs.stage }}
+
+          ${NOTIFY_USERS} — model confirmation needed.
 
           **Recommended model:** \`${{ steps.outcome.outputs.recommended_model }}\`
           **Selection mode:** ${{ steps.outcome.outputs.selection_mode }}
@@ -339,6 +344,20 @@ jobs:
               exit 1
             fi
           fi
+
+          PR_URL="$(gh pr view "$BRANCH" --json url --jq .url)"
+          cat > /tmp/review-notification.md <<EOF
+          ## 📄 ${AGENT^^} artifact ready for review
+
+          The **${AGENT^^}** artifact for issue #${ISSUE} is ready.
+
+          [Review the pull request](${PR_URL})
+
+          Approving this pull request advances the pipeline to the next configured stage. The pipeline
+          will wait for your approval before proceeding.
+          EOF
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" \
+            --body-file /tmp/review-notification.md
 
       - name: Hand off to CI/CD pipeline
         if: steps.outcome.outputs.status == 'HANDED_OFF'

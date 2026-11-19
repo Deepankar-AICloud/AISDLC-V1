@@ -12,6 +12,15 @@ const CLEAR =
 
 test.describe.configure({ mode: "serial" });
 
+test("open mode hides the shared account header", async ({ page }) => {
+  test.skip(process.env.E2E_AUTH_MODE !== "open", "Run with E2E_AUTH_MODE=open.");
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "New requirement" })).toBeVisible();
+  await expect(page.locator("header")).not.toContainText("Admin (shared)");
+  await expect(page.locator("header")).not.toContainText("GitHub managed by the backend");
+  await expect(page.getByRole("button", { name: "Sign out" })).toHaveCount(0);
+});
+
 async function signIn(browser: Browser, username: string): Promise<Page> {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
@@ -37,11 +46,17 @@ async function fakeState(page: Page) {
 
 let requestUrl = "";
 
-test("paste, upload PDF/DOCX/PPTX, preview and submit creates the issue, then labels it", async ({ browser }) => {
+test("requirement boxes and uploads create the issue, then label it", async ({ browser }) => {
   const page = await signIn(browser, "alice");
   await page.goto("/new");
-  await expect(page.getByText(/Do not upload secrets/)).toBeVisible();
-  await page.getByLabel("Requirement text").fill(CLEAR);
+  await expect(page.getByText(/Do not upload secrets/)).toHaveCount(0);
+  await expect(page.getByText(/is a public repository/)).toHaveCount(0);
+  await page.getByLabel("Problem", { exact: true }).fill("Managers cannot see access request status.");
+  await page.getByLabel("Objective / Goal").fill("Reduce turnaround time.");
+  await page.getByLabel("Stakeholders / Users").fill("Employees and managers.");
+  await page.getByLabel("Scope (in scope / out of scope)").fill("Include status tracking.");
+  await page.getByLabel("Constraints / Compliance").fill("Follow company policy.");
+  await page.getByLabel("Success criteria").fill("Requests are tracked within one day.");
   await page
     .getByLabel("Upload documents")
     .setInputFiles([
@@ -59,9 +74,31 @@ test("paste, upload PDF/DOCX/PPTX, preview and submit creates the issue, then la
   await page.getByText("Issue body preview").click();
   await expect(page.locator("pre.body-preview")).toContainText("## Source documents");
   await expect(page.locator("pre.body-preview")).toContainText("UNTRUSTED SOURCE MATERIAL");
+  for (const text of [
+    "Managers cannot see access request status.",
+    "Reduce turnaround time.",
+    "Employees and managers.",
+    "Include status tracking.",
+    "Follow company policy.",
+    "Success criteria: Requests are tracked within one day.",
+  ]) {
+    await expect(page.locator("pre.body-preview")).toContainText(text);
+  }
 
   const submit = page.getByRole("button", { name: "Submit to AISDLC" });
+  const submitted = page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/api/requests"),
+  );
   await submit.dblclick(); // a double-click must still create one issue
+  const payload = (await submitted).postDataJSON();
+  expect(payload.fields).toMatchObject({
+    business_problem: "Managers cannot see access request status.",
+    objective: "Reduce turnaround time.",
+    stakeholders: "Employees and managers.",
+    scope: "Include status tracking.",
+    constraints: "Follow company policy.",
+  });
+  expect(payload.pasted_text).toContain("Success criteria: Requests are tracked within one day.");
   await expect(page).toHaveURL(/\/requests\/req_/);
   await expect(page.getByRole("link", { name: /GitHub issue #\d+/ })).toBeVisible();
   await expect(page.getByText("Stage in review")).toBeVisible();
@@ -80,7 +117,8 @@ test("paste, upload PDF/DOCX/PPTX, preview and submit creates the issue, then la
 test("AISDLC asks a question and the requester answers as themself", async ({ browser }) => {
   const page = await signIn(browser, "alice");
   await page.goto("/new");
-  await page.getByLabel("Requirement text").fill("Lorem ipsum dolor sit amet, consectetur adipiscing elit.");
+  await page.getByText("Additional details (optional)").click();
+  await page.getByLabel("Additional requirement text").fill("Lorem ipsum dolor sit amet, consectetur adipiscing elit.");
   await page.getByRole("button", { name: "Preview" }).click();
   await expect(page.getByText(/AISDLC will probably ask about/)).toBeVisible();
   await page.getByRole("button", { name: "Submit to AISDLC" }).click();

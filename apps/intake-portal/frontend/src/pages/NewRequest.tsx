@@ -6,38 +6,31 @@ import { Dropzone, type LocalFile } from "../components/Dropzone";
 import { Alert, formatBytes } from "../components/ui";
 import type { Preview, RequestDetail } from "../types";
 
-const FIELDS: { key: string; label: string; guidance: string; multiline: boolean }[] = [
-  { key: "title", label: "Title", guidance: "A short name for the requirement.", multiline: false },
+const REQUIREMENT_FIELDS = [
   {
     key: "business_problem",
-    label: "Business problem",
-    guidance: "What is not working today, and for whom?",
-    multiline: true,
+    label: "Problem",
+    example: "Employees cannot check access-request status, so they contact IT for updates.",
   },
   {
     key: "objective",
-    label: "Objective",
-    guidance: "What outcome should the change achieve? How will you know it worked?",
-    multiline: true,
+    label: "Objective / Goal",
+    example: "Show request status so that employees can see progress without contacting IT.",
   },
   {
     key: "stakeholders",
-    label: "Stakeholders",
-    guidance: "Who is affected or needs to approve (roles or teams)?",
-    multiline: true,
+    label: "Stakeholders / Users",
+    example: "Employees submit requests; IT administrators review them; managers track team requests.",
   },
-  { key: "scope", label: "Scope", guidance: "What is included, and what is out of scope?", multiline: true },
+  {
+    key: "scope",
+    label: "Scope (in scope / out of scope)",
+    example: "In scope: submit and track access requests. Out of scope: change HR records.",
+  },
   {
     key: "constraints",
-    label: "Constraints",
-    guidance: "Deadlines, compliance, policy, technology or budget limits.",
-    multiline: true,
-  },
-  {
-    key: "target_repository",
-    label: "Target repository",
-    guidance: "Optional, for example org/repo.",
-    multiline: false,
+    label: "Constraints / Compliance",
+    example: "Must use company sign-in and follow data-retention and access-control policies.",
   },
 ];
 
@@ -47,7 +40,8 @@ export function NewRequestPage() {
   const { me } = useMe();
   const navigate = useNavigate();
   const [fields, setFields] = useState<Record<string, string>>({});
-  const [pasted, setPasted] = useState("");
+  const [additionalText, setAdditionalText] = useState("");
+  const [successCriteria, setSuccessCriteria] = useState("");
   const [files, setFiles] = useState<LocalFile[]>([]);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [edits, setEdits] = useState<Record<string, Edit>>({});
@@ -58,8 +52,11 @@ export function NewRequestPage() {
 
   const cfg = me.config;
   const blocked = files.some((f) => f.problem);
-  const filled = FIELDS.filter((f) => f.key !== "title" && (fields[f.key] ?? "").trim()).length;
-  const hasContent = pasted.trim() || files.length || filled;
+  const pasted = [successCriteria.trim() && `Success criteria: ${successCriteria.trim()}`, additionalText.trim()]
+    .filter(Boolean)
+    .join("\n\n");
+  const pastedTooLong = pasted.length > cfg.max_pasted_chars;
+  const hasContent = pasted || files.length || REQUIREMENT_FIELDS.some((f) => (fields[f.key] ?? "").trim());
 
   const totalBytes = useMemo(() => files.reduce((n, f) => n + f.file.size, 0), [files]);
 
@@ -115,9 +112,6 @@ export function NewRequestPage() {
   return (
     <>
       <h1>New requirement</h1>
-      <Alert kind="warn" title="Before you start">
-        {cfg.notice}
-      </Alert>
       {error && <Alert kind="error">{error}</Alert>}
 
       <form
@@ -127,19 +121,33 @@ export function NewRequestPage() {
         }}
       >
         <div className="card">
+          <h2>Requirement details</h2>
+          {REQUIREMENT_FIELDS.map((f) => (
+            <div className="field" key={f.key}>
+              <label htmlFor={`f-${f.key}`}>{f.label}</label>
+              <textarea
+                id={`f-${f.key}`}
+                rows={3}
+                maxLength={4000}
+                placeholder={f.example}
+                value={fields[f.key] ?? ""}
+                onChange={(e) => {
+                  setFields({ ...fields, [f.key]: e.target.value });
+                  setPreview(null);
+                }}
+              />
+            </div>
+          ))}
           <div className="field">
-            <label htmlFor="pasted">Requirement text</label>
-            <p className="hint" id="pasted-hint">
-              Paste the requirement as you have it. AISDLC will ask for anything it needs.
-            </p>
+            <label htmlFor="success-criteria">Success criteria</label>
             <textarea
-              id="pasted"
-              className="big"
-              aria-describedby="pasted-hint"
-              value={pasted}
-              maxLength={cfg.max_pasted_chars}
+              id="success-criteria"
+              rows={3}
+              maxLength={4000}
+              placeholder="90% of requests receive an initial review within one business day."
+              value={successCriteria}
               onChange={(e) => {
-                setPasted(e.target.value);
+                setSuccessCriteria(e.target.value);
                 setPreview(null);
               }}
             />
@@ -163,50 +171,56 @@ export function NewRequestPage() {
         </div>
 
         <details className="card">
-          <summary>Structured fields (optional) · {filled} of 5 filled</summary>
-          <p className="hint">
-            These mirror the AISDLC readiness check: business problem, objective and stakeholders are needed before the
-            BRD is generated; scope and constraints are recommended. Missing items are fine.
-          </p>
-          {FIELDS.map((f) => (
-            <div className="field" key={f.key}>
-              <label htmlFor={`f-${f.key}`}>{f.label}</label>
-              <p className="hint" id={`h-${f.key}`}>
-                {f.guidance}
-              </p>
-              {f.multiline ? (
-                <textarea
-                  id={`f-${f.key}`}
-                  rows={3}
-                  maxLength={4000}
-                  aria-describedby={`h-${f.key}`}
-                  value={fields[f.key] ?? ""}
-                  onChange={(e) => {
-                    setFields({ ...fields, [f.key]: e.target.value });
-                    setPreview(null);
-                  }}
-                />
-              ) : (
-                <input
-                  id={`f-${f.key}`}
-                  maxLength={200}
-                  aria-describedby={`h-${f.key}`}
-                  value={fields[f.key] ?? ""}
-                  onChange={(e) => {
-                    setFields({ ...fields, [f.key]: e.target.value });
-                    setPreview(null);
-                  }}
-                />
-              )}
-            </div>
-          ))}
+          <summary>Additional details (optional)</summary>
+          <div className="field">
+            <label htmlFor="f-title">Title</label>
+            <input
+              id="f-title"
+              maxLength={200}
+              value={fields.title ?? ""}
+              onChange={(e) => {
+                setFields({ ...fields, title: e.target.value });
+                setPreview(null);
+              }}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="f-target_repository">Target repository</label>
+            <input
+              id="f-target_repository"
+              maxLength={200}
+              value={fields.target_repository ?? ""}
+              onChange={(e) => {
+                setFields({ ...fields, target_repository: e.target.value });
+                setPreview(null);
+              }}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="additional-text">Additional requirement text</label>
+            <textarea
+              id="additional-text"
+              className="big"
+              maxLength={cfg.max_pasted_chars}
+              value={additionalText}
+              onChange={(e) => {
+                setAdditionalText(e.target.value);
+                setPreview(null);
+              }}
+            />
+          </div>
         </details>
 
         <div className="actions">
-          <button type="submit" disabled={!hasContent || blocked || busy !== ""}>
+          <button type="submit" disabled={!hasContent || blocked || pastedTooLong || busy !== ""}>
             {busy === "preview" ? "Extracting…" : "Preview"}
           </button>
           {blocked && <span className="muted">Remove the files marked with a problem first.</span>}
+          {pastedTooLong && (
+            <span role="alert">
+              Success criteria and additional text together exceed {cfg.max_pasted_chars.toLocaleString()} characters.
+            </span>
+          )}
         </div>
       </form>
 

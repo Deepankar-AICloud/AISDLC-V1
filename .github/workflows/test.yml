@@ -5,11 +5,19 @@ on:
     branches: [main]
     paths:
       - 'scripts/**'
+      - 'apps/intake-portal/backend/app/intake/issue_builder.py'
+      - '.github/workflows/agentic-sdlc.yml'
+      - '.github/workflows/artifact-review.yml'
+      - '.github/workflows/feedback-handler.yml'
       - '.github/workflows/test.yml'
   pull_request:
     branches: [main]
     paths:
       - 'scripts/**'
+      - 'apps/intake-portal/backend/app/intake/issue_builder.py'
+      - '.github/workflows/agentic-sdlc.yml'
+      - '.github/workflows/artifact-review.yml'
+      - '.github/workflows/feedback-handler.yml'
       - '.github/workflows/test.yml'
   workflow_dispatch:
 
@@ -38,6 +46,9 @@ jobs:
 
       - name: Compile Python modules
         run: python -m compileall -q scripts
+
+      - name: Test GitHub notification workflow wiring
+        run: python -m unittest discover -s scripts/tests -p "test_*.py"
 
       - name: Run deterministic orchestrator smoke check
         run: >-

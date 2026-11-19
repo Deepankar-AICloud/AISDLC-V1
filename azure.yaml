@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+#
+# Deploys AISDLC Studio (apps/intake-portal, Dockerfile.studio) to Azure App Service as a
+# Linux custom container. Run from the repository root:  azd up
+# The root infra/ folder belongs to SmartServe and is not used here.
+name: aisdlc-studio
+infra:
+  provider: bicep
+  path: apps/intake-portal/infra
+  module: main
+services:
+  studio:
+    project: apps/intake-portal
+    host: appservice
+    language: docker
+    docker:
+      # Built locally; Dockerfile.studio.dockerignore keeps .env, keys and local job data out.
+      path: Dockerfile.studio
+      context: ../..
+      buildArgs:
+        # Networks that block the public registries can use credential-free mirrors
+        # (pip still verifies requirements.lock hashes):
+        #   azd env set STUDIO_NPM_REGISTRY https://<mirror>/npm/
+        #   azd env set STUDIO_PIP_INDEX_URL https://<mirror>/pypi/simple/
+        - NPM_CONFIG_REGISTRY=${STUDIO_NPM_REGISTRY:-https://registry.npmjs.org/}
+        - PIP_INDEX_URL=${STUDIO_PIP_INDEX_URL:-https://pypi.org/simple}

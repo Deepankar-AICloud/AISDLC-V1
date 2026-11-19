@@ -23,14 +23,13 @@ test("shared login retains the design, submits an issue and keeps reviewer privi
   await page.getByLabel("Password", { exact: true }).fill("e2e-only-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("heading", { name: "New requirement" })).toBeVisible();
-  await expect(page.getByText(/Shared requester account:/)).toBeVisible();
+  await expect(page.locator("header")).not.toContainText("Admin (shared)");
+  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+  await expect(page.getByText(/Shared requester account:/)).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Production", exact: true })).toHaveCount(0);
-  await page
-    .getByLabel("Requirement text")
-    .fill(
-      "Business problem: managers cannot see access request status. Objective: improve visibility. " +
-        "Stakeholders: employees, managers and the security team.",
-    );
+  await page.getByLabel("Problem", { exact: true }).fill("Managers cannot see access request status.");
+  await page.getByLabel("Objective / Goal").fill("Improve visibility.");
+  await page.getByLabel("Stakeholders / Users").fill("Employees, managers and the security team.");
   await page.getByRole("button", { name: "Preview", exact: true }).click();
   await page.getByRole("button", { name: "Submit to AISDLC" }).click();
   await expect(page).toHaveURL(/\/requests\/req_/);

@@ -2,8 +2,9 @@
 
 A web front door and review desk for the AISDLC pipeline in this repository.
 
-- **Requesters** paste a requirement, upload documents, preview the GitHub issue and submit. The portal
-  creates the issue and then adds `sdlc:start`.
+- **Requesters** enter the problem, objective, stakeholders, scope, constraints and success criteria in
+  separate boxes, optionally add text or documents, preview the GitHub issue and submit. The portal creates
+  the issue and then adds `sdlc:start`.
 - **Requesters and assigned reviewers** answer AISDLC's questions (`sdlc:awaiting-info`) from the portal.
 - **Reviewers** read the stage artifact (rendered Markdown and Mermaid), the diff, the QC scorecard and the
   model decision. They then approve, request changes, or send allowlisted `/agent` and `/model` commands.
@@ -108,6 +109,17 @@ not this example file. Without `SESSION_SECRET` in local password mode, restarti
 
 Validation: `pytest tests/test_password_signin.py` covers the login, shared/named identity boundary, and
 the real App-authentication/API path with a mocked GitHub HTTP transport (not a live Actions run).
+
+#### No sign-in page (`AUTH_MODE=open`, local only)
+
+To skip the login page entirely, use the same commands as above but set `AUTH_MODE=open` (and drop
+`PORTAL_ADMIN_PASSWORD`; `GITHUB_SIGNIN_ENABLED` can be `false`). The page opens straight on
+**New requirement**: the SPA calls `POST /auth/open-session`, which issues the normal signed session and
+CSRF token for the same shared `Requester` identity. No credentials or secrets reach the browser; GitHub
+stays authenticated server-side by the App. Open mode is rejected unless `APP_ENV` is `development`/`test`
+and the server is on a loopback address, because anyone who can reach it can create issues in the
+repository. Reviews and approvals still happen on GitHub by named reviewers.
+
 For the isolated browser test (fake GitHub only):
 
 ```powershell
@@ -177,21 +189,62 @@ a plain-HTTP browser URL: the production session cookie requires HTTPS.
 If your network requires package mirrors, pass credential-free `NPM_CONFIG_REGISTRY` and
 `PIP_INDEX_URL` build arguments pointing at your approved mirrors. Do not disable TLS or hash checks.
 
-- **Secrets** (`STUDIO_PASSWORD`, `SESSION_SECRET`, `COPILOT_GITHUB_TOKEN`) come from Key Vault references
-  (App Service) or a Kubernetes secret (AKS). Never bake them into the image or commit them.
+- **Secrets** (`STUDIO_PASSWORD`, `SESSION_SECRET`, `COPILOT_GITHUB_TOKEN`) are runtime settings: App
+  Service app settings (set by `azd up`, below), Key Vault references or a Kubernetes secret (AKS). Never
+  bake them into the image or commit them.
   `COPILOT_GITHUB_TOKEN` is a fine-grained PAT of a user with a Copilot licence; Studio passes it only to
   the agent subprocess, and strips `STUDIO_PASSWORD`, `SESSION_SECRET` and `GITHUB_TOKEN` from it.
 - **Single instance.** Jobs are files plus an in-process runner: run one App Service instance / one AKS
-  replica, and mount persistent storage (Azure Files) at `DATA_DIR` (`/app/var/studio`).
+  replica, and keep `DATA_DIR` on persistent storage (App Service `/home`, an AKS persistent volume).
 - **App Service:** use a Linux custom container, target port `8000` (`WEBSITES_PORT=8000` for the
   classic container configuration), Always On and health path `/healthz`. Restrict ingress before
-  publishing the URL. Mount storage writable by the image's UID `10001`.
+  publishing the URL. Storage must be writable by the image's UID `10001`.
 - **AKS:** use one replica, a persistent volume writable by UID `10001`, readiness/liveness probes on
   `/healthz:8000`, and a TLS ingress with a network allowlist. Never mount the Docker socket.
 - Production (`APP_ENV=production`, the image default) refuses to start without an https
   `PUBLIC_BASE_URL` and a 32+ character `SESSION_SECRET`. TLS is terminated by App Service / ingress.
 - Long stages (especially Code) can take many minutes; `STAGE_TIMEOUT_SECONDS` (default 3600) stops a
   run. The timeout kills the orchestrator process; tools it started may finish on their own.
+
+### Deploy Studio to Azure App Service (azd)
+
+[`azure.yaml`](../../azure.yaml) and [`infra/`](infra/) deploy Studio as a Linux custom container on App
+Service (P1v3, one instance), with a Basic container registry that the app pulls from using a
+user-assigned managed identity (no registry passwords) and a Log Analytics workspace for container,
+HTTP and platform logs. The repository's root `infra/` folder belongs to SmartServe and is not used.
+
+```powershell
+# From the repository root. azd must be signed in to the subscription's tenant
+# (azd auth login --tenant-id <tenant-id>, or reuse the Azure CLI: azd config set auth.useAzCliAuth true).
+azd env new aisdlc-studio --subscription <subscription-id> --location centralindia
+azd up    # builds Dockerfile.studio locally, pushes it, provisions rg-aisdlc-studio and deploys
+```
+
+- **Sign-in:** username `admin`. On first provision azd generates a 24-character password and the session
+  key, keeps them only in `.azure/<env>/config.json` (gitignored) and sets them as App Service app
+  settings. Read the password yourself rather than pasting it anywhere:
+  `az webapp config appsettings list -g rg-aisdlc-studio -n <app-name> --query "[?name=='STUDIO_PASSWORD'].value" -o tsv`
+- **AI mode:** without a token Studio runs in dry-run mode (`USE_LLM=false`): the pipeline, readiness
+  questions and QC all work, but the offline placeholder documents fail QC by design, so real BRD/PRD/code
+  needs a token. Run `azd env set COPILOT_GITHUB_TOKEN <token>` in your own terminal (a fine-grained PAT
+  of a Copilot-licensed user with the *Copilot Requests* permission), then `azd up` again.
+- **Blocked package registries:** if `registry.npmjs.org` or `files.pythonhosted.org` is blocked where you
+  build, point the image build at approved credential-free mirrors (pip still verifies the lock-file
+  hashes): `azd env set STUDIO_NPM_REGISTRY https://<mirror>/npm/` and
+  `azd env set STUDIO_PIP_INDEX_URL https://<mirror>/pypi/simple/`.
+- **Storage:** jobs, workspaces and the agent's `HOME` live on App Service's persistent `/home` share
+  (`DATA_DIR=/home/studio-data`, and `STUDIO_HOME=/home/studio`, which the container start command exports
+  as `HOME` because App Service doesn't allow an app setting named `HOME`), which counts toward the plan's 250 GB. There is
+  no storage account or Key Vault: this subscription's policy turns off shared-key and public network
+  access for them, so secrets are encrypted App Service app settings instead.
+- **First deploy of a new environment:** the first provision has no image yet, so the site starts with a
+  placeholder image that never passes the warm-up probe on port 8000. Studio can take up to 10 minutes
+  (`WEBSITES_CONTAINER_START_TIME_LIMIT=600`) to come up after that first `azd up`; later deploys switch
+  over in seconds.
+- **Redeploying:** `azd deploy` rebuilds and pushes the image after code changes; use `azd up` (or
+  `azd provision`) after changing `infra/` or `azd env` values.
+- The image includes the working tree as it is when you run `azd up` (minus the ignored files above).
+- `azd down` deletes the resource group, including every Studio job and download.
 
 ### Studio settings
 
@@ -261,13 +314,32 @@ frontend). CI: [`.github/workflows/intake-portal-ci.yml`](../../.github/workflow
 |---|---|---|---|
 | Submit | create issue → `[Part k/n]` comments → add `sdlc:start` | service | `agentic-sdlc-codeql-gate.yml` → `agentic-sdlc.yml` |
 | Answer questions | issue comment | **user** | gate resumes (needs `sdlc:awaiting-info`, CodeQL green) |
-| Approve stage | `APPROVE` review on `sdlc/issue-N/<stage>` | **user** | `artifact-review.yml` merges the PR, starts the next stage |
+| Approve stage | `APPROVE` review on `sdlc/issue-N/<stage>`, or merge the PR | **user** | `artifact-review.yml` merges the PR (if needed), starts the next stage |
 | Request changes | `/agent revise <notes>` comment on the PR | **user** | `feedback-handler.yml` |
 | Other commands | `/agent regenerate\|rerun-qc\|explain\|status\|impact` | **user** | `feedback-handler.yml` |
 | Confirm model | `/model approve` or `/model select <model> <reason>` on the issue | **user** | `feedback-handler.yml` (model job) |
 | Approve production | `POST actions/runs/{id}/pending_deployments` | **user** | `deploy-production.yml` (`production` environment) |
 
 Note: the gate removes `sdlc:start` once it dispatches, so its absence does not mean the request stalled.
+
+### GitHub email notifications and stage progression
+
+The workflow posts milestone updates as comments on the original issue: model recommendations, model
+decisions and resumes, artifact pull requests ready for review, and stage approvals/next-stage starts.
+GitHub generates the email wrapper and layout, like the notification in the example; SMTP settings are
+not needed. GitHub sends these notifications according to each user's issue subscription and notification
+settings. Because the portal bot opens the issue, the owner is not subscribed automatically, so the
+model-confirmation comment @mentions the repository owner. Set the repository variable
+`SDLC_NOTIFY_USERS` (for example `@alice @org/reviewers`) to mention different people. To receive the
+email, enable **Email** for "Participating, @mentions and custom" at
+https://github.com/settings/notifications and verify the default notification email address.
+
+The generation sequence is BRD → PRD → EPIC → Architecture → NFR → Tasks → Code. It does not advance
+immediately after generating the BRD. The BRD artifact pull request is the human gate: approving it
+approves and merges that stage, then queues PRD. Merging the PR without an approving review is also
+treated as approval and queues PRD. A PR that was approved and then merged advances only once. The same
+approval gate applies to subsequent stages
+that require review. Model confirmation is a separate gate before that stage's generation begins.
 
 ## Required GitHub protections (do this before using the portal for real)
 

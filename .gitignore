@@ -25,6 +25,9 @@ obj/
 .env
 .env.*
 appsettings.Development.local.json
+# azd environments hold generated Studio secrets; only .azure/deployment-plan.md is shared.
+.azure/*/
+.azure/config.json
 
 # OS / editor
 .DS_Store

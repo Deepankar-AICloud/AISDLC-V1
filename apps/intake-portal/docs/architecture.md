@@ -48,6 +48,10 @@ production arrows use the signed-in user's own GitHub App user access token.
 
 ### Optional shared requester sign-in
 
+`AUTH_MODE=open` (development/test on loopback only) gives the same `shared:admin` Requester session
+without credentials via `POST /auth/open-session` (origin-checked and rate-limited), so the SPA skips the
+login page.
+
 `AUTH_MODE=password` adds a server-validated `admin` login, using `PORTAL_ADMIN_PASSWORD` and the
 existing signed session cookie. Its `shared:admin` portal identity has only the Requester role. It can
 submit via the existing installation-token intake path and read its requests; it cannot connect a personal
