@@ -28,6 +28,9 @@ param studioImageName string = ''
 
 param enableCodeStage bool = true
 
+@description('Shared App Service plan SKU (Linux).')
+param appServicePlanSku string = 'P1v3'
+
 var serviceName = 'studio'
 var webAppName = 'app-studio-${resourceToken}'
 // Placeholder so the site can be created before azd builds and pushes the Studio image.
@@ -99,7 +102,7 @@ module appServicePlan 'br/public:avm/res/web/serverfarm:0.7.1' = {
     tags: tags
     kind: 'linux'
     reserved: true
-    skuName: 'P1v3'
+    skuName: appServicePlanSku
     // Jobs are files plus an in-process runner: exactly one instance.
     skuCapacity: 1
     zoneRedundant: false
@@ -231,5 +234,8 @@ resource appSettings 'Microsoft.Web/sites/config@2024-04-01' = {
 output registryLoginServer string = registry.outputs.loginServer
 output registryName string = registry.outputs.name
 output logAnalyticsWorkspaceId string = logAnalytics.outputs.resourceId
+output appServicePlanId string = appServicePlan.outputs.resourceId
+output pullIdentityResourceId string = pullIdentity.outputs.resourceId
+output pullIdentityClientId string = pullIdentity.outputs.clientId
 output webAppName string = webApp.outputs.name
 output webAppUrl string = 'https://${webApp.outputs.defaultHostname}'

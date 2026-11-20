@@ -2,7 +2,7 @@
 # Build from apps/intake-portal:  docker build -t aisdlc-portal .
 
 # ---- frontend build ---------------------------------------------------------
-FROM node:20.18.1-alpine3.20 AS web
+FROM node:22.12.0-alpine3.20 AS web
 # Optional package mirrors, e.g. --build-arg NPM_CONFIG_REGISTRY=https://mirror/npm/
 ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
 ENV NPM_CONFIG_REGISTRY=${NPM_CONFIG_REGISTRY}

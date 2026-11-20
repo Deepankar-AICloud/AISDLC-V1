@@ -16,6 +16,36 @@
     },
     "studioImageName": {
       "value": "${SERVICE_STUDIO_IMAGE_NAME=}"
+    },
+    "appServicePlanSku": {
+      "value": "${APP_SERVICE_PLAN_SKU=P1v3}"
+    },
+    "portalWebAppName": {
+      "value": "${PORTAL_WEB_APP_NAME=aisdlc-studio-io}"
+    },
+    "portalImageName": {
+      "value": "${SERVICE_PORTAL_IMAGE_NAME=}"
+    },
+    "portalAllowedIps": {
+      "value": "${PORTAL_ALLOWED_IPS}"
+    },
+    "portalGithubRepository": {
+      "value": "${PORTAL_GITHUB_REPOSITORY}"
+    },
+    "portalGithubAppId": {
+      "value": "${PORTAL_GITHUB_APP_ID}"
+    },
+    "portalGithubAppClientId": {
+      "value": "${PORTAL_GITHUB_APP_CLIENT_ID}"
+    },
+    "portalGithubAppClientSecret": {
+      "value": "${PORTAL_GITHUB_APP_CLIENT_SECRET}"
+    },
+    "portalGithubAppPrivateKeyBase64": {
+      "value": "${PORTAL_GITHUB_APP_PRIVATE_KEY_B64}"
+    },
+    "portalTokenEncryptionKey": {
+      "value": "${PORTAL_TOKEN_ENCRYPTION_KEY}"
     }
   }
 }

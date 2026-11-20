@@ -7,7 +7,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select
 
-from app.db import AuditEntry, GitHubLink, utcnow
+from app.db import AuditEntry, GitHubLink, User, utcnow
 from app.github.fake import ACTIONS, BOT
 from app.intake.issue_builder import PART_HEADER_RE
 from tests.conftest import CLEAR_REQUIREMENT
@@ -22,6 +22,13 @@ def audit(portal, action: str) -> list[AuditEntry]:
 
 def in_review(portal, requester="alice"):
     req = portal.submit_text(requester, CLEAR_REQUIREMENT)
+    portal.client(requester)
+    with portal.container.db.sessionmaker() as db:
+        user = db.scalar(select(User).where(User.entra_oid == f"dev-{requester}"))
+        assert user is not None
+        if "Reviewer" not in user.roles:
+            user.roles = [*user.roles, "Reviewer"]
+            db.commit()
     detail = portal.client(requester).get(f"/api/requests/{req['id']}").json()
     return req, detail["open_stage_pr"]
 
@@ -39,26 +46,26 @@ def assert_bot_only_posted_parts(fake):
 def test_awaiting_info_questions_and_answer_posted_as_user(portal):
     req = portal.submit_text("alice", VAGUE)
     c = portal.client("alice")
-    detail = c.get(f"/api/requests/{req['id']}").json()
-    assert detail["status"] == "awaiting_info"
-    assert any("business problem" in q for q in detail["snapshot"]["questions"])
+    detail = c.get(f"/api/employee/requests/{req['id']}").json()
+    assert detail["status"] == "more_information_required"
+    assert any("business problem" in q for q in detail["action_required"]["questions"])
 
-    r = c.post(f"/api/requests/{req['id']}/answer", json={"answer": "x"})
+    r = c.post(f"/api/employee/requests/{req['id']}/information", data={"answer": "x"})
     assert r.status_code == 409 and r.json()["error"]["code"] == "github_not_linked"
 
     portal.connect("alice", "alice-gh")
-    r = c.post(f"/api/requests/{req['id']}/answer", json={"answer": "/agent status"})
+    r = c.post(f"/api/employee/requests/{req['id']}/information", data={"answer": "/agent status"})
     assert r.status_code == 422
-    r = c.post(f"/api/requests/{req['id']}/answer", json={"answer": CLEAR_REQUIREMENT})
+    r = c.post(f"/api/employee/requests/{req['id']}/information", data={"answer": CLEAR_REQUIREMENT})
     assert r.status_code == 200, r.text
-    assert r.json()["github_login"] == "alice-gh"
+    assert r.json() == {"submitted": True}
     n = req["issue_number"]
     human = [x for x in portal.fake.s.comments[n] if x["body"] == CLEAR_REQUIREMENT]
     assert len(human) == 1 and human[0]["user"]["login"] == "alice-gh"
     # The simulated CodeQL gate resumed the run: label cleared, BRD PR opened.
-    detail = c.get(f"/api/requests/{req['id']}").json()
-    assert "sdlc:awaiting-info" not in detail["snapshot"]["labels"]
-    assert detail["status"] == "in_review"
+    detail = c.get(f"/api/employee/requests/{req['id']}").json()
+    assert detail["status"] == "under_review"
+    assert "sdlc:awaiting-info" not in portal.request_data(req["id"])["snapshot"]["labels"]
     assert audit(portal, "answer_questions")[0].github_login == "alice-gh"
     assert_bot_only_posted_parts(portal.fake)
 

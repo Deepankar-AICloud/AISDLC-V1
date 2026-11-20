@@ -51,8 +51,8 @@ def test_new_github_user_with_triage_becomes_requester_and_is_connected(portal_f
     # The new user can submit, and their answers are posted as themselves.
     d = c.post("/api/intake/preview", data={"pasted_text": "Lorem ipsum dolor sit amet.", "fields": "{}"}).json()
     req = c.post("/api/requests", json={"draft_id": d["draft_id"]}, headers={"Idempotency-Key": "k1"}).json()["request"]
-    r = c.post(f"/api/requests/{req['id']}/answer", json={"answer": CLEAR_REQUIREMENT})
-    assert r.status_code == 200 and r.json()["github_login"] == "newbie-gh"
+    r = c.post(f"/api/employee/requests/{req['id']}/information", data={"answer": CLEAR_REQUIREMENT})
+    assert r.status_code == 200 and r.json() == {"submitted": True}
     with p.container.db.sessionmaker() as db:
         entry = db.scalar(select(AuditEntry).where(AuditEntry.action == "github_signin"))
         assert entry.outcome == "ok" and entry.github_login == "newbie-gh"

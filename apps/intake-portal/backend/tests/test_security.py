@@ -18,8 +18,9 @@ from sqlalchemy import select
 
 from app.auth.entra import EntraClient, EntraError
 from app.config import Settings, UnsafeConfigurationError
-from app.db import GitHubLink
+from app.db import GitHubLink, IntakeRequest
 from app.logging_setup import RedactingJsonFormatter, redact
+from app.status.sync import sync_request
 from tests import samples
 from tests.conftest import CLEAR_REQUIREMENT
 
@@ -36,9 +37,12 @@ def test_no_github_token_in_any_response_or_log(portal, capsys):
     portal.connect("bob", "bob-gh")
     portal.connect("alice", "alice-gh")
     alice, bob = portal.client("alice"), portal.client("bob")
-    alice.post(f"/api/requests/{req['id']}/refresh")
-    detail = alice.get(f"/api/requests/{req['id']}").json()
-    pr = detail["open_stage_pr"]
+    with portal.container.db.sessionmaker() as db:
+        record = db.get(IntakeRequest, req["id"])
+        assert record is not None
+        sync_request(portal.container, db, record)
+    detail = portal.request_data(req["id"])
+    pr = detail["snapshot"]["open_stage_pr"]
     bob.get(f"/api/requests/{req['id']}/stages/{pr}")
     bob.post(f"/api/requests/{req['id']}/stages/{pr}/request-changes", json={"notes": "tighten scope"})
     alice.get("/api/me")
@@ -145,8 +149,8 @@ def test_webhook_signature_and_replay(portal_factory):
     assert ok.status_code == 204
     replay = c.post("/webhooks/github", content=body, headers={**headers, "X-Hub-Signature-256": _sig("s3cret", body)})
     assert replay.status_code == 204
-    detail = p.client("alice").get(f"/api/requests/{req['id']}").json()
-    assert detail["last_synced_at"] is not None
+    p.client("alice").get(f"/api/employee/requests/{req['id']}")
+    assert p.request_data(req["id"])["last_synced_at"] is not None
 
 
 def test_webhook_rejected_when_secret_unset(portal):

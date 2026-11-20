@@ -51,6 +51,10 @@ Settings come only from environment variables (see [`.env.example`](.env.example
 Sign in as a development user (alice = Requester, bob = Reviewer and code owner, erin = production
 reviewer), then use **Account → Connect GitHub** and pick the matching fake GitHub account.
 
+Requesters use **Requests → My requests** for their plain-language status and use the request ID page
+for updates or follow-up information. Reviewer-only routes retain the technical workflow, audit log,
+and GitHub details. Employee API responses are owner-scoped and omit engineering metadata.
+
 ## Shared login with the original GitHub Actions pipeline
 
 The original, colourful portal also supports **username `admin` + a server-configured password**.
@@ -58,11 +62,15 @@ This is separate from Studio: it still creates a GitHub issue, adds `sdlc:start`
 GitHub Actions workflows. It does not run the Studio generator locally.
 
 - The shared account is a **Requester**, not a privileged administrator. It can upload/paste requirements,
-  submit issues and view its generated artifacts and status without a personal Microsoft/GitHub account.
+  and submit issues without a personal Microsoft/GitHub account.
 - Named reviewers use **Sign in with GitHub** (or Microsoft if configured) for answers, model decisions,
   reviews and approvals. Repository access, CODEOWNERS, QC and production approval gates are unchanged.
-- A personal GitHub account cannot be linked to the shared login. Everyone using that login can see its
-  requests; this is not customer/tenant isolation. Do not use it for unrelated customers' confidential data.
+- A personal GitHub account cannot be linked to the shared login. Requests share one owner and cannot be
+  separated by employee; this is not customer/tenant isolation. Do not use it for unrelated customers'
+  confidential data.
+- Password-based shared sign-in cannot provide private employee request tracking; employee history and follow-up
+  actions remain disabled for that mode. Use `AUTH_MODE=open` with per-request tracking keys, or configure
+  individual Microsoft Entra sign-in for owner-scoped tracking.
 - Password checks happen on the backend. Signed HttpOnly cookies, CSRF checks and sign-in rate limiting
   apply. No GitHub credentials or configured password are returned to the frontend.
 
@@ -110,15 +118,22 @@ not this example file. Without `SESSION_SECRET` in local password mode, restarti
 Validation: `pytest tests/test_password_signin.py` covers the login, shared/named identity boundary, and
 the real App-authentication/API path with a mocked GitHub HTTP transport (not a live Actions run).
 
-#### No sign-in page (`AUTH_MODE=open`, local only)
+#### No sign-in page (`AUTH_MODE=open`)
 
 To skip the login page entirely, use the same commands as above but set `AUTH_MODE=open` (and drop
 `PORTAL_ADMIN_PASSWORD`; `GITHUB_SIGNIN_ENABLED` can be `false`). The page opens straight on
 **New requirement**: the SPA calls `POST /auth/open-session`, which issues the normal signed session and
-CSRF token for the same shared `Requester` identity. No credentials or secrets reach the browser; GitHub
-stays authenticated server-side by the App. Open mode is rejected unless `APP_ENV` is `development`/`test`
-and the server is on a loopback address, because anyone who can reach it can create issues in the
-repository. Reviews and approvals still happen on GitHub by named reviewers.
+CSRF token for the shared `Requester` identity. No credentials or secrets reach the browser; GitHub
+stays authenticated server-side by the App. Each submission receives a random private tracking key.
+The browser saves that key locally to show **My requests** and load request details without exposing a
+shared list to other visitors. Clearing browser data loses that list; only share a tracking key with
+someone who should be able to view and respond to that request. Follow-up comments are posted by the
+requester's linked GitHub identity; when using open access, contact IT with the request ID if a follow-up
+is required. Reviews and approvals still happen on GitHub by named reviewers.
+
+Open mode is rejected unless `APP_ENV` is `development`/`test` on loopback or, in production, the
+operator confirms that an upstream IP allow-list restricts access. Anyone allowed through that
+network restriction can submit requests; tracking details still require each request's private key.
 
 For the isolated browser test (fake GitHub only):
 
@@ -470,6 +485,27 @@ docker push <registry>.azurecr.io/aisdlc-portal:<tag>
 5. Scaling out: drafts and pending submissions live in `DATA_DIR`. Either keep ARR affinity on (sticky
    sessions), or mount Azure Files at `DATA_DIR`. The in-memory rate limiter is per instance.
 6. Point the GitHub App webhook at `https://<host>/webhooks/github`.
+
+### Demo deploy with azd (no sign-in page, IP allow-list)
+
+The root `azure.yaml` service `portal` deploys the portal to `aisdlc-studio-io` on the Studio plan, using
+`AUTH_MODE=open` plus `OPEN_MODE_NETWORK_RESTRICTED=true`. The second setting is only safe because App
+Service access restrictions deny every IP outside `PORTAL_ALLOWED_IPS`. Set values in the gitignored azd
+environment (never commit them):
+
+```powershell
+azd env set PORTAL_ALLOWED_IPS "203.0.113.10/32,198.51.100.0/24"
+azd env set PORTAL_GITHUB_REPOSITORY <owner>/<repo>
+azd env set PORTAL_GITHUB_APP_ID <id>
+azd env set PORTAL_GITHUB_APP_CLIENT_ID <client-id>
+azd env set PORTAL_GITHUB_APP_CLIENT_SECRET <client-secret>
+azd env set PORTAL_GITHUB_APP_PRIVATE_KEY_B64 ([Convert]::ToBase64String([IO.File]::ReadAllBytes("<key>.pem")))
+azd env set PORTAL_TOKEN_ENCRYPTION_KEY <Fernet key>
+azd provision; azd deploy portal
+```
+
+`SESSION_SECRET` and `GITHUB_WEBHOOK_SECRET` are generated by azd. To allow another IP, update
+`PORTAL_ALLOWED_IPS` and run `azd provision` again.
 
 ## Safety notes
 

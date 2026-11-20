@@ -195,7 +195,8 @@ export function RequestDetailPage() {
   async function retry() {
     setBusy(true);
     try {
-      setDetail({ ...(await api<RequestDetail>(`/api/requests/${id}/retry-submit`, { method: "POST" })) });
+      await api(`/api/requests/${id}/retry-submit`, { method: "POST" });
+      await load();
     } catch (e) {
       setError(errorText(e));
     } finally {

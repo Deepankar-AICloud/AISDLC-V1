@@ -274,14 +274,16 @@ class IntakeService:
         existing = db.scalar(select(IntakeRequest).where(IntakeRequest.idempotency_key == key))
         if existing:
             return existing, False
-        window = utcnow() - timedelta(minutes=self.s.idempotency_window_minutes)
-        dup = db.scalar(
-            select(IntakeRequest).where(
-                IntakeRequest.requester_id == user.id,
-                IntakeRequest.content_hash == content_hash,
-                IntakeRequest.created_at >= window,
+        dup = None
+        if not user.is_shared:
+            window = utcnow() - timedelta(minutes=self.s.idempotency_window_minutes)
+            dup = db.scalar(
+                select(IntakeRequest).where(
+                    IntakeRequest.requester_id == user.id,
+                    IntakeRequest.content_hash == content_hash,
+                    IntakeRequest.created_at >= window,
+                )
             )
-        )
         if dup:
             return dup, False
 

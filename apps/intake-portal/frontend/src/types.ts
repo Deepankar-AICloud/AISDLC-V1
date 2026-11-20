@@ -135,6 +135,25 @@ export type RequestDetail = RequestSummary & {
   is_requester: boolean;
 };
 
+export type EmployeeRequest = {
+  id: string;
+  title: string;
+  status:
+    "submitted" | "under_review" | "more_information_required" | "approved" | "in_progress" | "completed" | "rejected";
+  submitted_at: string;
+  last_updated_at: string;
+  latest_update: { from: string; message: string; updated_at: string };
+  progress: { id: string; label: string; state: "completed" | "current" | "pending" | "delayed" | "rejected" }[];
+  action_required: { required: boolean; questions: string[] };
+  assigned_reviewer: string | null;
+  expected_completion_at: string | null;
+  can_retry_submission: boolean;
+  problem?: string;
+  objective?: string;
+};
+
+export type TrackingAccess = { id: string; token: string };
+
 export type Check = { rule: string; ok: boolean | null; detail: string };
 
 export type StageView = {

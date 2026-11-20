@@ -32,11 +32,13 @@ test("shared login retains the design, submits an issue and keeps reviewer privi
   await page.getByLabel("Stakeholders / Users").fill("Employees, managers and the security team.");
   await page.getByRole("button", { name: "Preview", exact: true }).click();
   await page.getByRole("button", { name: "Submit to AISDLC" }).click();
-  await expect(page).toHaveURL(/\/requests\/req_/);
-  await expect(page.getByRole("link", { name: /GitHub issue #/ })).toBeVisible();
-  await page.getByRole("link", { name: "Review", exact: true }).click();
-  await expect(page.getByText("Reviewing needs the Reviewer role in the portal.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Approve…" })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/my-requests\/req_/);
+  await expect(page.getByRole("heading", { name: "Your request has been submitted" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /GitHub issue #/ })).toHaveCount(0);
+  await expect(page.getByText(/Live tracking needs individual sign-in/)).toBeVisible();
+  const technicalUrl = page.url().replace("/my-requests/", "/requests/");
+  await page.goto(technicalUrl);
+  await expect(page.getByText("Technical request details are available to reviewers.")).toBeVisible();
   await page.getByRole("link", { name: "Account", exact: true }).click();
   await expect(page.getByRole("link", { name: "Connect GitHub" })).toHaveCount(0);
   await page.getByRole("button", { name: "Sign out", exact: true }).click();

@@ -113,7 +113,9 @@ def create_app(settings: Settings | None = None, fake: FakeGitHub | None = None)
     )
     app.state.container = container
     secret = settings.session_secret.get_secret_value() or (
-        secrets.token_urlsafe(48) if settings.auth_mode in ("password", "open") else "dev-only-session-secret-" + "x" * 16
+        secrets.token_urlsafe(48)
+        if settings.auth_mode in ("password", "open")
+        else "dev-only-session-secret-" + "x" * 16
     )
     app.state.sessions = SessionManager(secret, settings.session_max_age_seconds, settings.secure_cookies)
     app.state.entra = (
@@ -133,7 +135,7 @@ def create_app(settings: Settings | None = None, fake: FakeGitHub | None = None)
             allow_origins=settings.cors_origins,
             allow_credentials=True,
             allow_methods=["GET", "POST", "DELETE"],
-            allow_headers=["content-type", "x-csrf-token", "idempotency-key", "x-request-id"],
+            allow_headers=["content-type", "x-csrf-token", "idempotency-key", "x-request-id", "x-request-access"],
         )
 
     @app.middleware("http")

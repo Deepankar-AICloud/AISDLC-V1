@@ -10,6 +10,7 @@ import { ProductionPage } from "./pages/Production";
 import { RequestDetailPage } from "./pages/RequestDetail";
 import { RequestsPage } from "./pages/Requests";
 import { StageReviewPage } from "./pages/StageReview";
+import { EmployeeRequestDetailPage } from "./pages/EmployeeRequestDetail";
 
 type MeState = { me: Me; reload: () => Promise<void> };
 const MeContext = createContext<MeState | null>(null);
@@ -83,6 +84,12 @@ function Layout({ me, children }: { me: Me; children: React.ReactNode }) {
       <main id="main" tabIndex={-1}>
         {me.config.github_mode === "fake" && (
           <Alert kind="info">Development mode: GitHub is simulated. Nothing is sent to a real repository.</Alert>
+        )}
+        {isRequester(me) && me.config.auth_mode !== "open" && me.user.sign_in === "password" && (
+          <Alert kind="warn" title="Personal request tracking needs individual sign-in">
+            This shared sign-in cannot securely separate employee requests. Ask your administrator to enable individual
+            Microsoft Entra sign-in.
+          </Alert>
         )}
         {me.github.needs_reconnect && (
           <Alert kind="warn" title="Your GitHub connection expired.">
@@ -167,9 +174,46 @@ export default function App() {
             <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path="/new" element={<NewRequestPage />} />
             <Route path="/requests" element={<RequestsPage />} />
-            <Route path="/requests/:id" element={<RequestDetailPage />} />
-            <Route path="/requests/:id/stages/:pr" element={<StageReviewPage />} />
-            <Route path="/production" element={<ProductionPage />} />
+            <Route
+              path="/my-requests/:id"
+              element={
+                isRequester(me) ? (
+                  <EmployeeRequestDetailPage />
+                ) : (
+                  <Alert kind="info">You do not have access to employee requests.</Alert>
+                )
+              }
+            />
+            <Route
+              path="/requests/:id"
+              element={
+                isReviewer(me) ? (
+                  <RequestDetailPage />
+                ) : (
+                  <Alert kind="info">Technical request details are available to reviewers.</Alert>
+                )
+              }
+            />
+            <Route
+              path="/requests/:id/stages/:pr"
+              element={
+                isReviewer(me) ? (
+                  <StageReviewPage />
+                ) : (
+                  <Alert kind="info">Stage reviews are available to reviewers.</Alert>
+                )
+              }
+            />
+            <Route
+              path="/production"
+              element={
+                isReviewer(me) ? (
+                  <ProductionPage />
+                ) : (
+                  <Alert kind="info">Production approvals are available to reviewers.</Alert>
+                )
+              }
+            />
             <Route path="/account" element={<AccountPage />} />
             <Route path="*" element={<Alert kind="info">Page not found.</Alert>} />
           </Routes>

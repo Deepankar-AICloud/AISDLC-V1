@@ -7,7 +7,9 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.intake_routes import request_dict
 from app.config import Settings
+from app.db import IntakeRequest
 from app.github.fake import FakeGitHub
 from app.main import create_app
 
@@ -92,11 +94,19 @@ class Portal:
             "/api/requests", json={"draft_id": draft_id, **body}, headers={"Idempotency-Key": key or uuid.uuid4().hex}
         )
 
+    def request_data(self, request_id: str) -> dict[str, Any]:
+        with self.container.db.sessionmaker() as db:
+            record = db.get(IntakeRequest, request_id)
+            assert record is not None
+            return request_dict(record, detail=True)
+
     def submit_text(self, username: str, text: str, **kw: Any) -> dict[str, Any]:
         d = self.preview(username, pasted=text, **kw)
         r = self.submit(username, d["draft_id"])
         assert r.status_code == 200, r.text
-        return r.json()["request"]
+        request = r.json()["request"]
+        request.update(self.request_data(request["id"]))
+        return request
 
 
 @pytest.fixture

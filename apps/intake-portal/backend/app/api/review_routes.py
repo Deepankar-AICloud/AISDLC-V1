@@ -12,7 +12,7 @@ from ..errors import ApiError
 from ..github.commands import AgentCommand, ModelCommand
 from ..review.production import ProductionService
 from ..review.service import ReviewService
-from .deps import container, db_session, load_request, rate_limit
+from .deps import container, db_session, load_request, rate_limit, require_role
 
 router = APIRouter(prefix="/api")
 
@@ -25,6 +25,7 @@ def stage(
     db: Session = Depends(db_session),
     c: Container = Depends(container),
 ) -> dict[str, Any]:
+    require_role(user, c.settings.entra_reviewer_role)
     req = load_request(db, c, user, request_id)
     return ReviewService(c).stage_view(db, user, req, pr_number)
 
@@ -102,6 +103,7 @@ def model(
 
 @router.get("/commands")
 def allowed_commands(user: User = Depends(rate_limit("read")), c: Container = Depends(container)) -> dict[str, Any]:
+    require_role(user, c.settings.entra_reviewer_role)
     return {
         "agent": [x.value for x in AgentCommand],
         "model": [x.value for x in ModelCommand],

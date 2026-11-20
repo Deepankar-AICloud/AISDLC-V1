@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     auth_mode: Literal["entra", "dev", "password", "open"] = "entra"
     # "password" and "open" sign everyone in as one shared requester ("open" needs no credentials).
     # GitHub reviews and approvals still require a named user.
+    # Operator acknowledgement that an upstream IP allow-list (e.g. App Service access restrictions)
+    # fronts the portal. Only then may AUTH_MODE=open run outside local development.
+    open_mode_network_restricted: bool = False
     portal_admin_password: SecretStr = SecretStr("")
     entra_tenant_id: str = ""
     entra_client_id: str = ""
@@ -178,9 +181,16 @@ class Settings(BaseSettings):
                 or urlsplit(self.public_base_url).hostname not in ("127.0.0.1", "localhost", "::1")
             ):
                 raise UnsafeConfigurationError(f"Development AUTH_MODE={self.auth_mode} requires loopback hosting.")
-            # Anonymous visitors can create GitHub issues, so open mode never binds publicly in any environment.
-            if self.auth_mode == "open" and self.bind_host not in ("127.0.0.1", "localhost", "::1"):
-                raise UnsafeConfigurationError("AUTH_MODE=open requires BIND_HOST to be a loopback address.")
+            # Anonymous visitors can create GitHub issues, so open mode binds publicly only behind an IP allow-list.
+            if (
+                self.auth_mode == "open"
+                and not self.open_mode_network_restricted
+                and self.bind_host not in ("127.0.0.1", "localhost", "::1")
+            ):
+                raise UnsafeConfigurationError(
+                    "AUTH_MODE=open requires BIND_HOST to be a loopback address "
+                    "(or OPEN_MODE_NETWORK_RESTRICTED=true behind an IP allow-list)."
+                )
             if self.github_mode == "app":
                 missing = [
                     name
@@ -199,7 +209,7 @@ class Settings(BaseSettings):
         dev_only: list[str] = []
         if self.auth_mode == "dev":
             dev_only.append("AUTH_MODE=dev")
-        if self.auth_mode == "open":
+        if self.auth_mode == "open" and not self.open_mode_network_restricted:
             dev_only.append("AUTH_MODE=open")
         if self.github_mode == "fake":
             dev_only.append("GITHUB_MODE=fake")

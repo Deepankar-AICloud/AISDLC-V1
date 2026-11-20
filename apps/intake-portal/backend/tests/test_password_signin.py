@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.config import Settings, UnsafeConfigurationError
-from app.db import AuditEntry, GitHubLink
+from app.db import AuditEntry, GitHubLink, IntakeRequest
+from app.status.sync import sync_request
 from tests.conftest import CLEAR_REQUIREMENT
 from tests.test_api_intake import label_after_content
 from tests.test_github_signin import github_signin, me
@@ -87,9 +88,12 @@ def test_shared_requester_submits_but_cannot_borrow_a_reviewer_identity(shared_p
     )
     assert response.status_code == 200, response.text
     req = response.json()["request"]
-    assert req["submit_step"] == "done"
-    assert shared_portal.fake.s.issues[req["issue_number"]]["user"]["login"] == "aisdlc-portal[bot]"
-    assert client.get(f"/api/requests/{req['id']}").status_code == 200
+    internal = shared_portal.request_data(req["id"])
+    assert internal["submit_step"] == "done"
+    assert shared_portal.fake.s.issues[internal["issue_number"]]["user"]["login"] == "aisdlc-portal[bot]"
+    assert "issue_number" not in req and "snapshot" not in req
+    assert client.get(f"/api/requests/{req['id']}").status_code == 403
+    assert client.get(f"/api/employee/requests/{req['id']}").status_code == 503
     assert client.get("/auth/github/connect").status_code == 403
     assert client.post(f"/api/requests/{req['id']}/model", json={"command": "approve"}).status_code == 403
     assert client.post("/api/production/123/approve", json={"confirmation": "promote"}).status_code == 403
@@ -100,16 +104,14 @@ def test_shared_requester_submits_but_cannot_borrow_a_reviewer_identity(shared_p
     reviewer, location = github_signin(shared_portal, login="bob-gh")
     assert location == "/"
     assert me(reviewer)["user"]["roles"] == ["Requester", "Reviewer"]
-    detail = client.get(f"/api/requests/{req['id']}").json()
+    with shared_portal.container.db.sessionmaker() as db:
+        record = db.get(IntakeRequest, req["id"])
+        assert record is not None
+        sync_request(shared_portal.container, db, record)
+    detail = reviewer.get(f"/api/requests/{req['id']}").json()
     stage_url = f"/api/requests/{req['id']}/stages/{detail['open_stage_pr']}"
-    stage = client.get(stage_url)
-    assert stage.status_code == 200
-    assert (
-        client.post(
-            stage_url + "/approve", json={"head_sha": stage.json()["pr"]["head_sha"], "confirmed": True}
-        ).status_code
-        == 403
-    )
+    assert client.get(stage_url).status_code == 403
+    assert client.post(stage_url + "/approve", json={"head_sha": "0" * 40, "confirmed": True}).status_code == 403
     review = reviewer.get(stage_url)
     assert review.status_code == 200
     assert review.json()["precheck"]["can_approve"] is True
@@ -126,8 +128,8 @@ def test_shared_requester_cannot_answer_as_a_human(shared_portal):
     req = client.post(
         "/api/requests", json={"draft_id": preview["draft_id"]}, headers={"Idempotency-Key": "incomplete"}
     ).json()["request"]
-    response = client.post(f"/api/requests/{req['id']}/answer", json={"answer": CLEAR_REQUIREMENT})
-    assert response.status_code == 403 and response.json()["error"]["code"] == "shared_identity"
+    response = client.post(f"/api/employee/requests/{req['id']}/information", data={"answer": CLEAR_REQUIREMENT})
+    assert response.status_code == 503 and response.json()["error"]["code"] == "individual_sign_in_required"
 
 
 def test_password_session_stops_working_when_mode_is_disabled(shared_portal):
@@ -155,6 +157,15 @@ def test_open_mode_starts_a_shared_session_without_credentials(portal_factory):
     )
     assert created.status_code == 200, created.text
     req = created.json()["request"]
+    token = created.json()["tracking_token"]
+    assert client.get("/api/employee/requests").status_code == 503
+    assert client.get(f"/api/employee/requests/{req['id']}").status_code == 404
+    tracked = client.get(
+        f"/api/employee/requests/{req['id']}",
+        headers={"X-Request-Access": token},
+    )
+    assert tracked.status_code == 200, tracked.text
+    assert tracked.json()["id"] == req["id"]
     assert client.post(f"/api/requests/{req['id']}/model", json={"command": "approve"}).status_code == 403
 
 
@@ -171,8 +182,37 @@ def test_open_mode_is_local_development_only():
         Settings(app_env="development", auth_mode="open", github_mode="fake", bind_host="0.0.0.0")  # noqa: S104
     with pytest.raises(UnsafeConfigurationError, match="AUTH_MODE=open requires BIND_HOST"):
         Settings(
-            app_env="test", auth_mode="open", github_mode="fake", bind_host="0.0.0.0", public_base_url="http://testserver"  # noqa: S104
+            app_env="test",
+            auth_mode="open",
+            github_mode="fake",
+            bind_host="0.0.0.0",
+            public_base_url="http://testserver",  # noqa: S104
         )
+
+
+def test_open_mode_runs_in_production_only_behind_an_acknowledged_ip_allow_list():
+    production = {
+        "app_env": "production",
+        "auth_mode": "open",
+        "bind_host": "0.0.0.0",  # noqa: S104
+        "public_base_url": "https://portal.example",
+        "session_secret": "s" * 32,
+        "github_repository": "o/r",
+        "github_app_id": "1",
+        "github_app_client_id": "c",
+        "github_app_client_secret": "x",
+        "github_app_private_key": "k",
+        "github_webhook_secret": "w",
+        "token_encryption_key": "t",
+    }
+    with pytest.raises(UnsafeConfigurationError, match="AUTH_MODE=open"):
+        Settings(**production)
+    assert Settings(**production, open_mode_network_restricted=True).auth_mode == "open"
+    with pytest.raises(UnsafeConfigurationError, match="GITHUB_MODE=fake"):
+        Settings(**{**production, "github_mode": "fake"}, open_mode_network_restricted=True)
+    with pytest.raises(UnsafeConfigurationError, match="SESSION_SECRET"):
+        Settings(**{**production, "session_secret": ""}, open_mode_network_restricted=True)
+
 
 def test_password_mode_requires_a_password_and_named_reviewers():
     with pytest.raises(UnsafeConfigurationError, match="PORTAL_ADMIN_PASSWORD"):
@@ -283,7 +323,8 @@ def test_production_password_intake_uses_app_authentication_and_github_api(porta
             )
             assert response.status_code == 200, response.text
             req = response.json()["request"]
-            assert req["submit_step"] == "done"
-            assert label_after_content(p.fake, req["issue_number"])
+            internal = p.request_data(req["id"])
+            assert internal["submit_step"] == "done"
+            assert label_after_content(p.fake, internal["issue_number"])
             assert auth_requests == ["/repos/demo/aisdlc/installation", "/app/installations/456/access_tokens"]
             assert p.container.fake is None

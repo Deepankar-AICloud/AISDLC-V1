@@ -61,3 +61,25 @@ def load_request(db: Session, c: Container, user: User, request_id: str) -> Inta
     if req is None or not can_view(c, db, user, req):
         raise not_found()
     return req
+
+
+def load_owned_request(db: Session, user: User, request_id: str) -> IntakeRequest:
+    req = db.get(IntakeRequest, request_id)
+    if req is None or req.requester_id != user.id:
+        raise not_found()
+    return req
+
+
+def require_role(user: User, role: str) -> None:
+    if role not in (user.roles or []):
+        raise ApiError(403, "role_required", f"This action needs the {role} role in the portal.")
+
+
+def require_individual_identity(c: Container, user: User) -> None:
+    if c.settings.auth_mode == "open" or user.is_shared:
+        raise ApiError(
+            503,
+            "individual_sign_in_required",
+            "Personal request tracking requires an individual sign-in. Ask your administrator to enable "
+            "Microsoft Entra sign-in.",
+        )

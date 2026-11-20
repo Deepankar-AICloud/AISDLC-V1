@@ -21,6 +21,26 @@ test("open mode hides the shared account header", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Sign out" })).toHaveCount(0);
 });
 
+test("open mode tracks anonymous submissions without exposing a shared request list", async ({ page }) => {
+  test.skip(process.env.E2E_AUTH_MODE !== "open", "Run with E2E_AUTH_MODE=open.");
+  await page.goto("/");
+  await page.getByLabel("Problem", { exact: true }).fill("Managers need to see access request status.");
+  await page.getByLabel("Objective / Goal").fill("Reduce manual follow-up.");
+  await page.getByLabel("Stakeholders / Users").fill("Employees and managers.");
+  await page.getByRole("button", { name: "Preview", exact: true }).click();
+  await page.getByRole("button", { name: "Submit to AISDLC" }).click();
+  await expect(page).toHaveURL(/\/my-requests\/req_/);
+  await expect(page.getByRole("heading", { name: "Your request has been submitted" })).toBeVisible();
+  await expect(page.getByText(/individual sign-in/)).toHaveCount(0);
+  const title = await page.locator(".employee-page-heading h1").textContent();
+  const trackingPath = new URL(page.url()).pathname;
+
+  await page.goto("/requests");
+  await expect(page.getByRole("link", { name: title ?? "" })).toBeVisible();
+  await page.goto(trackingPath);
+  await expect(page.getByRole("heading", { name: title ?? "" })).toBeVisible();
+});
+
 async function signIn(browser: Browser, username: string): Promise<Page> {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
@@ -99,11 +119,12 @@ test("requirement boxes and uploads create the issue, then label it", async ({ b
     constraints: "Follow company policy.",
   });
   expect(payload.pasted_text).toContain("Success criteria: Requests are tracked within one day.");
-  await expect(page).toHaveURL(/\/requests\/req_/);
-  await expect(page.getByRole("link", { name: /GitHub issue #\d+/ })).toBeVisible();
-  await expect(page.getByText("Stage in review")).toBeVisible();
-  await expect(page.getByRole("cell", { name: "BRD" })).toBeVisible();
-  requestUrl = new URL(page.url()).pathname;
+  await expect(page).toHaveURL(/\/my-requests\/req_/);
+  await expect(page.getByRole("heading", { name: "Your request has been submitted" })).toBeVisible();
+  await expect(page.getByText("Under review", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("list", { name: "Request progress" })).toContainText("IT review");
+  await expect(page.getByRole("link", { name: /GitHub issue #\d+/ })).toHaveCount(0);
+  requestUrl = new URL(page.url()).pathname.replace("/my-requests/", "/requests/");
 
   const state = await fakeState(page);
   const issues = Object.values(state.issues) as { author: string; labels: string[] }[];
@@ -122,17 +143,17 @@ test("AISDLC asks a question and the requester answers as themself", async ({ br
   await page.getByRole("button", { name: "Preview" }).click();
   await expect(page.getByText(/AISDLC will probably ask about/)).toBeVisible();
   await page.getByRole("button", { name: "Submit to AISDLC" }).click();
-  await expect(page.getByRole("heading", { name: "AISDLC needs more information" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Action required" })).toBeVisible();
   await expect(page.getByText(/Please provide: business problem/)).toBeVisible();
   const detailUrl = page.url();
 
-  await expect(page.getByRole("link", { name: "Connect GitHub" }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Connect GitHub" })).toBeVisible();
   await connectGitHub(page, "alice-gh");
   await page.goto(detailUrl);
-  await page.getByLabel("Your answer").fill(CLEAR);
-  await page.getByRole("button", { name: "Post answer" }).click();
-  await expect(page.getByText("Posted to GitHub as alice-gh. AISDLC will resume.")).toBeVisible();
-  await expect(page.getByText("Stage in review")).toBeVisible();
+  await page.getByLabel("Your response").fill(CLEAR);
+  await page.getByRole("button", { name: "Provide information" }).click();
+  await expect(page.getByText("Thanks—your information was sent to the IT team.")).toBeVisible();
+  await expect(page.getByText("Under review", { exact: true }).first()).toBeVisible();
 
   const state = await fakeState(page);
   const all = Object.values(state.comments).flat() as { author: string; body: string }[];

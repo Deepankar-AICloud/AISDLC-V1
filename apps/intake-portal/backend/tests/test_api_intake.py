@@ -81,7 +81,8 @@ def test_paste_pdf_docx_pptx_submit_creates_issue_then_labels(portal):
     r = portal.submit("alice", d["draft_id"])
     assert r.status_code == 200, r.text
     req = r.json()["request"]
-    n = req["issue_number"]
+    internal = portal.request_data(req["id"])
+    n = internal["issue_number"]
     issue = portal.fake.s.issues[n]
     assert issue["user"]["login"] == BOT
     assert issue["title"] == "Access request tracking"
@@ -91,8 +92,8 @@ def test_paste_pdf_docx_pptx_submit_creates_issue_then_labels(portal):
     assert "sdlc:start" in [lbl for (num, act, lbl, _) in portal.fake.s.label_log if num == n and act == "add"]
     assert label_after_content(portal.fake, n)
     # The simulated pipeline found enough context and opened the BRD stage PR.
-    detail = portal.client("alice").get(f"/api/requests/{req['id']}").json()
-    assert detail["status"] == "in_review" and detail["snapshot"]["stages"][0]["agent"] == "brd"
+    detail = portal.client("alice").get(f"/api/employee/requests/{req['id']}").json()
+    assert detail["status"] == "under_review"
 
 
 def test_double_submit_same_key_creates_one_issue(portal):
@@ -137,17 +138,18 @@ def test_200_page_pdf_uses_overflow_without_loss(portal):
     assert f["error"] is None and f["pages"] == 200
     assert d["issue"]["overflow_comments"] > 0 and d["issue"]["uses_branch"]
     req = portal.submit("alice", d["draft_id"]).json()["request"]
-    n = req["issue_number"]
+    internal = portal.request_data(req["id"])
+    n = internal["issue_number"]
     issue = portal.fake.s.issues[n]
     assert len(issue["body"]) < 65_536
     parts = [c for c in portal.fake.s.comments[n] if c["user"]["login"] == BOT]
-    assert len(parts) == req["overflow_parts"]["total"] > 0
+    assert len(parts) == internal["overflow_parts"]["total"] > 0
     assert all(PART_HEADER_RE.match(c["body"]) and len(c["body"]) < 65_536 for c in parts)
     # Every page reached GitHub (body + parts), and the full text is on the intake branch, not main.
     visible = issue["body"] + "".join(c["body"] for c in parts)
     for page in (1, 57, 133, 200):
         assert f"Line 29 of page {page}." in visible
-    branch = req["overflow_branch"]
+    branch = internal["overflow_branch"]
     assert branch.startswith("intake/") and branch in portal.fake.s.files
     assert portal.fake.s.files["main"].keys() == {".github/CODEOWNERS", "README.md"}
     assert label_after_content(portal.fake, n)
@@ -180,7 +182,7 @@ def test_bad_files_give_clear_errors_without_crashing(portal_factory):
     assert errs["huge.txt"]["code"] == "too_large"
     assert errs["ok.txt"] is None
     req = p.submit("alice", d["draft_id"]).json()["request"]
-    assert [f["filename"] for f in req["files"]] == ["ok.txt"]
+    assert [f["filename"] for f in p.request_data(req["id"])["files"]] == ["ok.txt"]
 
 
 def test_edit_and_remove_files_before_sending(portal):
@@ -191,19 +193,19 @@ def test_edit_and_remove_files_before_sending(portal):
         d["draft_id"],
         files=[{"id": ids["a.txt"], "text": "edited text"}, {"id": ids["b.txt"], "include": False}],
     )
-    body = portal.fake.s.issues[r.json()["request"]["issue_number"]]["body"]
+    req = portal.request_data(r.json()["request"]["id"])
+    body = portal.fake.s.issues[req["issue_number"]]["body"]
     assert "edited text" in body and "drop me" not in body and "edited by the submitter" in body
 
 
 def test_user_cannot_see_or_act_on_another_users_request(portal):
     req = portal.submit_text("alice", CLEAR_REQUIREMENT)
-    for other in ("carol", "bob"):
-        c = portal.client(other)
-        assert c.get(f"/api/requests/{req['id']}").status_code == 404
-        assert c.post(f"/api/requests/{req['id']}/answer", json={"answer": "x"}).status_code == 404
-        assert c.get(f"/api/requests/{req['id']}/audit").status_code == 404
-        assert all(r["id"] != req["id"] for r in c.get("/api/requests").json()["requests"])
-    assert portal.client("alice").get("/api/requests").json()["requests"][0]["id"] == req["id"]
+    other = portal.client("carol")
+    assert other.get(f"/api/employee/requests/{req['id']}").status_code == 404
+    assert other.post(f"/api/employee/requests/{req['id']}/information", data={"answer": "x"}).status_code == 404
+    assert all(r["id"] != req["id"] for r in other.get("/api/employee/requests").json()["requests"])
+    assert portal.client("bob").get("/api/employee/requests").status_code == 403
+    assert portal.client("alice").get("/api/employee/requests").json()["requests"][0]["id"] == req["id"]
 
 
 def test_reviewer_without_requester_role_cannot_submit(portal):

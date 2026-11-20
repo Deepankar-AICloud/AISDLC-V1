@@ -877,6 +877,216 @@ dialog::backdrop {
   }
 }
 
+.employee-page-heading,
+.employee-confirmation,
+.employee-request-card-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.employee-page-heading {
+  margin-bottom: 1rem;
+}
+.employee-page-heading h1 {
+  margin-top: 0.35rem;
+}
+.employee-confirmation {
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1.25rem;
+  border-color: var(--ok);
+}
+.employee-confirmation h2 {
+  margin: 0;
+}
+.employee-confirmation p {
+  margin: 0.35rem 0 0.75rem;
+}
+.employee-confirmation-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background: var(--ok-bg);
+  color: var(--ok);
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+.employee-summary,
+.employee-meta,
+.employee-details,
+.employee-request-card-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.75rem 1.25rem;
+  margin: 0;
+}
+.employee-summary dt,
+.employee-meta dt,
+.employee-details dt,
+.employee-request-card-meta dt {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+.employee-summary dd,
+.employee-meta dd,
+.employee-details dd,
+.employee-request-card-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.employee-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 1rem;
+}
+.employee-grid .card {
+  margin-bottom: 0;
+}
+.employee-current-status {
+  margin-top: 0;
+}
+.employee-status {
+  font-size: 0.9rem;
+}
+.employee-progress {
+  list-style: none;
+  padding: 0 0 0 0.25rem;
+  margin: 1rem 0 0;
+}
+.employee-progress li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.5rem;
+  padding: 0.25rem 0 0.25rem 1.25rem;
+  border-left: 2px solid var(--border);
+}
+.employee-progress li:last-child {
+  border-left-color: transparent;
+}
+.progress-marker {
+  position: absolute;
+  left: -0.75rem;
+  display: grid;
+  place-items: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ok);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.progress-completed .progress-marker {
+  border-color: var(--ok);
+  background: var(--ok-bg);
+}
+.progress-current {
+  font-weight: 700;
+}
+.progress-current .progress-marker {
+  border-color: var(--accent);
+  background: var(--info-bg);
+}
+.progress-delayed {
+  color: var(--warn);
+  font-weight: 700;
+}
+.progress-delayed .progress-marker {
+  border-color: var(--warn);
+  background: var(--warn-bg);
+}
+.progress-rejected {
+  color: var(--danger);
+  font-weight: 700;
+}
+.progress-rejected .progress-marker {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.employee-update {
+  font-size: 1.05rem;
+}
+.employee-no-action {
+  color: var(--ok);
+  font-weight: 600;
+}
+.employee-details {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+}
+.employee-details > div {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.employee-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(12rem, 1fr);
+  gap: 1rem;
+  align-items: end;
+}
+.employee-filters .field {
+  margin-bottom: 1rem;
+}
+.employee-request-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 1rem;
+}
+.employee-request-card {
+  min-width: 0;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.employee-request-card-heading {
+  align-items: center;
+}
+.employee-request-card-heading h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.employee-request-card > .muted {
+  overflow-wrap: anywhere;
+}
+.employee-request-card-meta {
+  margin: 0.75rem 0 1rem;
+}
+.field-error {
+  color: var(--danger);
+}
+
+@media (max-width: 600px) {
+  .employee-page-heading,
+  .employee-confirmation,
+  .employee-request-card-heading {
+    align-items: flex-start;
+  }
+  .employee-page-heading,
+  .employee-request-card-heading {
+    flex-direction: column;
+  }
+  .employee-confirmation {
+    gap: 0.75rem;
+    padding: 1rem;
+  }
+  .employee-confirmation-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+  .employee-filters {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
 .dev-password-form label {
   display: block;
   margin: 0.6rem 0 0;

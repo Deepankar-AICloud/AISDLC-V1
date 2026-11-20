@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -14,6 +15,8 @@ from ..github import commands
 from ..github.clients import UserGitHubClient
 from ..github.http import GitHubError
 from ..github.identity import get_link, mark_revoked, reconnect_required, user_client
+from ..intake.issue_builder import safe_branch_filename
+from ..intake.service import IntakeService
 from ..status.sync import sync_request
 from .precheck import WRITE_LEVELS, Precheck, approval_precheck, stage_of
 
@@ -336,9 +339,18 @@ class ReviewService:
         sync_request(self.c, db, req)
         return {"comment_url": c.get("html_url"), "github_login": client.login, "command": text}
 
-    def answer(self, db: Session, user: User, req: IntakeRequest, answer: str) -> dict[str, Any]:
+    def answer(
+        self,
+        db: Session,
+        user: User,
+        req: IntakeRequest,
+        answer: str,
+        supporting_files: list[tuple[str, bytes]] | None = None,
+    ) -> dict[str, Any]:
+        uploads = supporting_files or []
         try:
-            text = commands.answer_text(answer)
+            fallback = "Please review the attached supporting documents." if uploads else ""
+            text = commands.answer_text(answer or fallback)
         except commands.CommandError as exc:
             raise ApiError(422, "invalid_answer", str(exc)) from exc
         if req.issue_number is None:
@@ -347,6 +359,56 @@ class ReviewService:
         if (req.status_snapshot or {}).get("status") != "awaiting_info":
             raise ApiError(409, "not_awaiting_info", "AISDLC is not waiting for information on this request.")
         client = user_client(self.c, db, user)
+        if uploads:
+            if not IntakeService(self.c)._branch_allowed():
+                raise ApiError(
+                    403,
+                    "supporting_files_not_allowed",
+                    "Supporting files can only be uploaded to a private repository.",
+                )
+            token = secrets.token_hex(6)
+            branch = f"intake/{req.id}-response-{token}"
+            branch_files: dict[str, bytes] = {}
+            for index, (name, data) in enumerate(uploads, start=1):
+                safe_name = safe_branch_filename(name)
+                path = f"intake/{req.id}/follow-up/{token}/{index}-{safe_name}"
+                branch_files[path] = data
+            try:
+                self.c.service.create_intake_branch(
+                    branch,
+                    self.s.github_base_branch,
+                    branch_files,
+                    f"docs(intake): supporting documents for {req.id} [skip ci]",
+                )
+            except GitHubError as exc:
+                record(
+                    db,
+                    user=user,
+                    github_login="(service)",
+                    identity="service",
+                    action="upload_supporting_documents",
+                    target_type="intake_branch",
+                    target_ref=branch,
+                    outcome="rejected",
+                    github_status=exc.status,
+                    request_id=req.id,
+                    detail=exc.message,
+                )
+                raise github_failure(exc) from exc
+            branch_url = f"{self.s.github_web_url.rstrip('/')}/{self.c.repository}/tree/{branch}"
+            text += f"\n\nSupporting documents: {branch_url}"
+            record(
+                db,
+                user=user,
+                github_login="(service)",
+                identity="service",
+                action="upload_supporting_documents",
+                target_type="intake_branch",
+                target_ref=branch,
+                outcome="ok",
+                request_id=req.id,
+                detail=f"{len(uploads)} file(s)",
+            )
         c = self._act(
             db,
             user,

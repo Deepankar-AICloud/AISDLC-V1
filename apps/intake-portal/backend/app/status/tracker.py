@@ -55,6 +55,35 @@ def parse_summary(body: str) -> dict[str, Any]:
     }
 
 
+def parse_issue_field(body: str, label: str) -> str:
+    heading = re.search(rf"^## {re.escape(label)}[ \t]*$", body or "", re.MULTILINE)
+    if not heading:
+        return ""
+    section = (body or "")[heading.end() :]
+    opening = re.search(r"^(~{4,})text[ \t]*$", section, re.MULTILINE)
+    if not opening:
+        return ""
+    content = section[opening.end() :]
+    closing = re.search(rf"^{re.escape(opening.group(1))}[ \t]*$", content, re.MULTILINE)
+    return content[: closing.start()].strip() if closing else ""
+
+
+def latest_human_update(comments: list[dict[str, Any]]) -> dict[str, str] | None:
+    for comment in reversed(comments):
+        user = comment.get("user") or {}
+        login = str(user.get("login") or "")
+        body = str(comment.get("body") or "").strip()
+        if login.lower() in BOTS or not body or body.startswith("/"):
+            continue
+        return {
+            "author": str(user.get("name") or login or "IT team"),
+            "login": login,
+            "body": body[:2000],
+            "created_at": str(comment.get("created_at") or ""),
+        }
+    return None
+
+
 def build_snapshot(svc: ServiceGitHubClient, issue_number: int) -> dict[str, Any]:
     issue = svc.get_issue(issue_number)
     labels = [lb["name"] for lb in issue.get("labels", [])]
@@ -149,6 +178,12 @@ def build_snapshot(svc: ServiceGitHubClient, issue_number: int) -> dict[str, Any
             "state": issue.get("state"),
             "title": issue.get("title", ""),
         },
+        "employee_details": {
+            "problem": parse_issue_field(str(issue.get("body") or ""), "Business problem"),
+            "objective": parse_issue_field(str(issue.get("body") or ""), "Objective"),
+        },
+        "latest_human_update": latest_human_update(comments),
+        "completed": done,
         "labels": labels,
         "status": status,
         "stage": stage,

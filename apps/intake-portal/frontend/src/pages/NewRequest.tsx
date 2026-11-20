@@ -4,7 +4,8 @@ import { api, errorText } from "../api";
 import { isRequester, useMe } from "../App";
 import { Dropzone, type LocalFile } from "../components/Dropzone";
 import { Alert, formatBytes } from "../components/ui";
-import type { Preview, RequestDetail } from "../types";
+import type { EmployeeRequest, Preview } from "../types";
+import { saveTrackingAccess } from "../trackingAccess";
 
 const REQUIREMENT_FIELDS = [
   {
@@ -98,11 +99,21 @@ export function NewRequestPage() {
           text: edits[f.id]?.text ?? f.text,
         })),
       };
-      const r = await api<{ request: RequestDetail }>("/api/requests", {
+      const r = await api<{ request: EmployeeRequest; tracking_token?: string }>("/api/requests", {
         json: body,
         headers: { "Idempotency-Key": idemKey.current },
       });
-      navigate(`/requests/${r.request.id}`);
+      let trackingSaved = true;
+      if (r.tracking_token) {
+        try {
+          saveTrackingAccess(r.request.id, r.tracking_token);
+        } catch {
+          trackingSaved = false;
+        }
+      }
+      navigate(`/my-requests/${r.request.id}`, {
+        state: { request: r.request, tracking_token: r.tracking_token, tracking_saved: trackingSaved },
+      });
     } catch (e) {
       setError(errorText(e));
       setBusy("");

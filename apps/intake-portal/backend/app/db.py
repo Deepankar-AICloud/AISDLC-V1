@@ -96,6 +96,15 @@ class IntakeRequest(Base):
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class RequestAccessGrant(Base):
+    """Bearer access for anonymous request tracking; only the token hash is stored."""
+
+    __tablename__ = "request_access_grants"
+    request_id: Mapped[str] = mapped_column(ForeignKey("requests.id"), primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Assignment(Base):
     __tablename__ = "assignments"
     __table_args__ = (UniqueConstraint("request_id", "github_login"),)
