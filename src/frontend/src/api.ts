@@ -131,6 +131,9 @@ export const api = {
   securityAccessRequests: (page = 1, pageSize = 50) =>
     request<PagedResult<PortalRequest>>(`/api/security/access-requests?page=${page}&pageSize=${pageSize}`),
 
+  teamRequests: (page = 1, pageSize = 50) =>
+    request<PagedResult<PortalRequest>>(`/api/team/requests?page=${page}&pageSize=${pageSize}`),
+
   requestTypes: {
     list: () => request<RequestType[]>('/api/request-types'),
     create: (body: { kind: RequestKind; name: string; description?: string }) =>

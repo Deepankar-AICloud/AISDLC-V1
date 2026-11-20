@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { api, PortalRequest, RequestKind, RequestType } from './api';
 import AdminRequestTypesPage from './features/admin-request-types/AdminRequestTypesPage';
+import ManagerTeamPage from './features/manager-team/ManagerTeamPage';
 
 // (proposed) tab navigation: the PRD/Epics don't specify a nav structure, so this is a minimal wiring choice.
-type Tab = 'requests' | 'admin-request-types';
+type Tab = 'requests' | 'admin-request-types' | 'manager-team';
 
 export default function App(): React.ReactElement {
   const [tab, setTab] = useState<Tab>('requests');
@@ -42,6 +43,17 @@ export default function App(): React.ReactElement {
     );
   }
 
+  if (tab === 'manager-team') {
+    return (
+      <div>
+        <nav style={{ maxWidth: 920, margin: '1rem auto', padding: '0 1rem' }}>
+          <button type="button" onClick={() => setTab('requests')}>&larr; Back to requests</button>
+        </nav>
+        <ManagerTeamPage />
+      </div>
+    );
+  }
+
   const typesForKind = requestTypes.filter((t) => t.kind === form.kind && t.isActive);
 
   async function submit(e: React.FormEvent): Promise<void> {
@@ -61,7 +73,8 @@ export default function App(): React.ReactElement {
       <h1>SmartServe</h1>
       <p>Enterprise IT Service &amp; Access Request Portal</p>
       <nav style={{ marginBottom: 16 }}>
-        <button type="button" onClick={() => setTab('admin-request-types')}>Manage request types (admin)</button>
+        <button type="button" onClick={() => setTab('admin-request-types')}>Manage request types (admin)</button>{' '}
+        <button type="button" onClick={() => setTab('manager-team')}>My team&apos;s requests (manager)</button>
       </nav>
 
       {error && (

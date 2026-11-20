@@ -212,6 +212,43 @@ namespace SmartServe.Api.Migrations
                     b.ToTable("RequestTypes");
                 });
 
+            modelBuilder.Entity("SmartServe.Api.Domain.RetentionDisposalRecord", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("DisposedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("FinalStatus")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("FirstReviewAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("PortalRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("SubmittedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DisposedAt");
+
+                    b.HasIndex("PortalRequestId");
+
+                    b.ToTable("RetentionDisposalRecords");
+                });
+
             modelBuilder.Entity("SmartServe.Api.Domain.PortalRequest", b =>
                 {
                     b.HasOne("SmartServe.Api.Domain.RequestType", "RequestType")

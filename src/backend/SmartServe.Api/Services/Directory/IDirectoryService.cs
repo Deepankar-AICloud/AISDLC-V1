@@ -16,4 +16,7 @@ public interface IDirectoryService
 
     /// <summary>Returns null when the user has no resolvable manager; throws on a genuine directory failure.</summary>
     Task<DirectoryUser?> GetManagerAsync(string userId, CancellationToken ct = default);
+
+    /// <summary>Returns the current direct reports of <paramref name="managerId"/> (empty if none); throws on a genuine directory failure. Used to resolve team scope at request time rather than from any stored/cached manager assignment (ARCH-COMP-004).</summary>
+    Task<IReadOnlyCollection<string>> GetDirectReportIdsAsync(string managerId, CancellationToken ct = default);
 }
