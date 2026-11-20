@@ -96,6 +96,10 @@ public class EndpointAuthorizationTests : IAsyncLifetime
                 Roles.Auditor, "auditor-1", HttpStatusCode.OK),
             new("Security reviewer list", HttpMethod.Get, () => "/api/security/access-requests", null,
                 Roles.SecurityReviewer, "security-1", HttpStatusCode.OK),
+            new("Manager team requests", HttpMethod.Get, () => "/api/team/requests", null,
+                Roles.Manager, "manager-1", HttpStatusCode.OK),
+            new("Review metrics", HttpMethod.Get, () => "/api/metrics/review", null,
+                Roles.Auditor, "auditor-1", HttpStatusCode.OK),
             new("List request types", HttpMethod.Get, () => "/api/request-types", null, Roles.Employee, "emp-create", HttpStatusCode.OK),
             new("Create request type", HttpMethod.Post, () => "/api/request-types", () =>
                 new CreateRequestTypeDto(RequestKind.Service, "Monitor Request", "Extra monitor"),

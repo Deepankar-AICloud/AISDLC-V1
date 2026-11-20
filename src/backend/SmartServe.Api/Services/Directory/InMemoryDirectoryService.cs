@@ -24,4 +24,13 @@ public class InMemoryDirectoryService : IDirectoryService
             return Task.FromResult<DirectoryUser?>(manager);
         return Task.FromResult<DirectoryUser?>(null);
     }
+
+    public Task<IReadOnlyCollection<string>> GetDirectReportIdsAsync(string managerId, CancellationToken ct = default)
+    {
+        IReadOnlyCollection<string> reports = _managerOf
+            .Where(kv => kv.Value == managerId)
+            .Select(kv => kv.Key)
+            .ToList();
+        return Task.FromResult(reports);
+    }
 }

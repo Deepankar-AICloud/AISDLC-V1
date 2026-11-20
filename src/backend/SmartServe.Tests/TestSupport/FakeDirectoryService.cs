@@ -33,4 +33,15 @@ public class FakeDirectoryService : IDirectoryService
             return manager;
         return null;
     }
+
+    public Task<IReadOnlyCollection<string>> GetDirectReportIdsAsync(string managerId, CancellationToken ct = default)
+    {
+        if (_broken.ContainsKey(managerId))
+            throw new DirectoryUnavailableException($"Simulated directory outage resolving direct reports of {managerId}");
+        IReadOnlyCollection<string> reports = _managerOf
+            .Where(kv => kv.Value == managerId)
+            .Select(kv => kv.Key)
+            .ToList();
+        return Task.FromResult(reports);
+    }
 }

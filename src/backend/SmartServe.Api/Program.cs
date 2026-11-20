@@ -8,6 +8,7 @@ using SmartServe.Api.Domain;
 using SmartServe.Api.Services;
 using SmartServe.Api.Services.Directory;
 using SmartServe.Api.Services.Email;
+using SmartServe.Api.Services.Teams;
 using SmartServe.Api.Testing;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -49,6 +50,7 @@ builder.Services.AddAuthorization(options =>
     // Confirmed: Employee policy, always filtered to the caller's own requests — no other role is granted access here.
     options.AddPolicy("CanViewOwnRequests", p => p.RequireRole(Roles.Employee));
     options.AddPolicy("CanApprove", p => p.RequireRole(Roles.Manager)); // (proposed) mapping
+    options.AddPolicy("CanViewTeamRequests", p => p.RequireRole(Roles.Manager)); // (proposed) mapping, TASK-010
     options.AddPolicy("CanFulfil", p => p.RequireRole(Roles.ItAdmin)); // (proposed) mapping
     options.AddPolicy("CanRetryRouting", p => p.RequireRole(Roles.ItAdmin)); // (proposed) mapping
     options.AddPolicy("CanAudit", p => p.RequireRole(Roles.Auditor, Roles.AppAdmin)); // Auditor confirmed read-all; AppAdmin read-all is (proposed)
@@ -89,8 +91,18 @@ else
 
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<WorkflowService>();
+builder.Services.AddScoped<ReviewMetricsService>();
+// Swappable team-scope resolution (ARCH-COMP-004): resolved fresh per request, never from a stored field.
+builder.Services.AddScoped<ITeamScopeProvider, DirectoryTeamScopeProvider>();
 builder.Services.AddSingleton<NotificationReconciliationService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<NotificationReconciliationService>());
+
+// Retention schedule is unset (disabled) by default; see docs/decisions/access-request-contract.md (TASK-014).
+var retentionOptions = new RetentionOptions();
+builder.Configuration.GetSection("Retention").Bind(retentionOptions);
+builder.Services.AddSingleton(retentionOptions);
+builder.Services.AddSingleton<RetentionService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RetentionService>());
 
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));

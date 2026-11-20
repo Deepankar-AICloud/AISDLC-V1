@@ -26,6 +26,43 @@ public class GraphDirectoryService : IDirectoryService
     public Task<DirectoryUser?> GetManagerAsync(string userId, CancellationToken ct = default)
         => GetAsync($"users/{Uri.EscapeDataString(userId)}/manager?$select=id,displayName,mail,userPrincipalName", ct);
 
+    public async Task<IReadOnlyCollection<string>> GetDirectReportIdsAsync(string managerId, CancellationToken ct = default)
+    {
+        try
+        {
+            var token = await _credential.GetTokenAsync(new TokenRequestContext(Scopes), ct);
+            using var req = new HttpRequestMessage(HttpMethod.Get,
+                $"users/{Uri.EscapeDataString(managerId)}/directReports?$select=id");
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
+            using var res = await _http.SendAsync(req, ct);
+
+            if (res.StatusCode == HttpStatusCode.NotFound) return Array.Empty<string>();
+            if (!res.IsSuccessStatusCode)
+                throw new DirectoryUnavailableException($"Graph direct-reports lookup failed with status {(int)res.StatusCode}");
+
+            await using var stream = await res.Content.ReadAsStreamAsync(ct);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+            var ids = new List<string>();
+            if (doc.RootElement.TryGetProperty("value", out var valueEl))
+            {
+                foreach (var item in valueEl.EnumerateArray())
+                {
+                    if (item.TryGetProperty("id", out var idEl) && idEl.GetString() is { } id)
+                        ids.Add(id);
+                }
+            }
+            return ids;
+        }
+        catch (DirectoryUnavailableException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new DirectoryUnavailableException($"Graph direct-reports lookup threw: {ex.Message}", ex);
+        }
+    }
+
     private async Task<DirectoryUser?> GetAsync(string path, CancellationToken ct)
     {
         try

@@ -11,6 +11,7 @@ public class SmartServeDbContext : DbContext
     public DbSet<RequestType> RequestTypes => Set<RequestType>();
     public DbSet<RequestAudit> RequestAudits => Set<RequestAudit>();
     public DbSet<NotificationRecord> NotificationRecords => Set<NotificationRecord>();
+    public DbSet<RetentionDisposalRecord> RetentionDisposalRecords => Set<RetentionDisposalRecord>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -51,6 +52,15 @@ public class SmartServeDbContext : DbContext
             e.Property(x => x.RowVersion).IsConcurrencyToken();
             e.HasIndex(x => x.PortalRequestId);
             e.HasIndex(x => new { x.Status, x.LeaseExpiresAt });
+        });
+
+        b.Entity<RetentionDisposalRecord>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Kind).HasConversion<string>();
+            e.Property(x => x.FinalStatus).HasConversion<string>();
+            e.HasIndex(x => x.PortalRequestId);
+            e.HasIndex(x => x.DisposedAt);
         });
     }
 }
